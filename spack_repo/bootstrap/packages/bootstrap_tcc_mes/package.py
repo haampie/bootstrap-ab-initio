@@ -429,7 +429,7 @@ class BootstrapTccMes(Package):
     resource(
         name="seeds",
         sha256="0de6d1f05c66dbe233f82d0a1ef7f79c77b05af781b5fbdbf077d9976eb5bdd7",
-        url="file:///home/harmenstoppels.linux/MES-replacement/distfiles/tcc-mes-seeds-0.3.tar.gz",
+        url="https://github.com/haampie/MES-replacement/releases/download/wip/tcc-mes-seeds.tar.gz",
         destination="",
         placement="seeds",
     )
