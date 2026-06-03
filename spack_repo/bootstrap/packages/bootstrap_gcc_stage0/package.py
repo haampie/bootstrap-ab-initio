@@ -67,15 +67,16 @@ class BootstrapGccStage0(Package):
 
     def configure_args(self, spec, prefix):
         cc = self.host_cc(spec)
+        triple = "%s-unknown-linux-musl" % spec.target.family
         return [
             "CC=" + cc,
             "CC_FOR_BUILD=" + cc,
             "CFLAGS=-DHAVE_ALLOCA_H",
             "MAKEINFO=true",
             "--prefix=" + prefix,
-            "--build=x86_64-unknown-linux-musl",
-            "--host=x86_64-unknown-linux-musl",
-            "--target=x86_64-unknown-linux-musl",
+            "--build=" + triple,
+            "--host=" + triple,
+            "--target=" + triple,
             "--with-sysroot=" + str(self.sysroot(spec)),
             "--with-native-system-header-dir=/include",
             "--with-gmp=" + str(spec["bootstrap-gmp"].prefix),

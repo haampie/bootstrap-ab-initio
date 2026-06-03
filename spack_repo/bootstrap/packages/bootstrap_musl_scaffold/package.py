@@ -28,34 +28,42 @@ class BootstrapMuslScaffold(Package):
     bootstrap-gmake-mes; kernel uapi headers from the prebuilt
     bootstrap-linux-headers-seed. No ``c`` virtual dependency.
 
-    Patches (the x86_64-applicable subset of steps/musl-1.1.24/patches/; the
-    skipped ones are AArch64-only -- tcc has no AArch64 assembler/inline-asm,
-    but it does on x86_64):
-      0001 EMPTY_LIB_NAMES += g   (tcc emits -lg at link; musl ships no libg.a)
-      0002 remove src/complex     (tcc 0.9.26 cannot parse C99 _Complex -- a
-                                   language gap, NOT a HAVE_FLOAT artifact)
-      0004 remove crt/rcrt1.c     (static-PIE startup, unused with --disable-shared)
-      0006 strip C99 [static N]   (tcc rejects `T buf[static N]` declarators)
-      0020 EMPTY_LIBS get obj/empty.o (tcc -ar refuses an empty archive)
+    Patches applied from steps/musl-1.1.24/patches/.  Shared patches have no
+    arch condition; arch-specific patches use ``when="target=<arch>:"``.
 
-      0040 x86_64 SysV-AMD64 va_list  (tcc-mes has no ``__builtin_va_*``;
-                                   without this every va_list TU fails to
-                                   parse). The reference's va_list patches
-                                   (13, 16-19) target arch/aarch64 and the
-                                   2-arg AAPCS64 __va_arg; this instead defines
-                                   ``va_list`` as the SysV ``__va_list_struct``
-                                   and routes va_start/va_arg through the 4-arg
-                                   __va_start/__va_arg from tcc-mes'
-                                   tcc_x86_64_stdarg.h. It also drops tcc's
-                                   va_list.c runtime into src/stdarg/ so the
-                                   src/*/*.c glob archives __va_start/__va_arg
-                                   into THIS libc.a (tcc-mes bakes them into
-                                   mes libc.a, which consumers linking scaffold
-                                   musl never see). __va_arg's arg_type is
-                                   hardcoded GP, so ``%f`` won't round-trip --
-                                   the documented scaffold FP limitation, fixed
-                                   downstream when gcc-stage0 rebuilds a
-                                   pristine bootstrap-musl."""
+    Shared (both architectures):
+      0001 EMPTY_LIB_NAMES += g   (tcc emits -lg at link; musl ships no libg.a)
+      0004 remove crt/rcrt1.c     (static-PIE startup, unused with --disable-shared)
+      0006 strip C99 [static N]   (tcc rejects ``T buf[static N]`` declarators)
+      0020 EMPTY_LIBS get obj/empty.o (tcc -ar refuses an empty archive)
+      src/complex and the arch-specific src/math/<arch> are removed in patch()
+      via shutil.rmtree (tcc cannot parse _Complex; the arch math shims are .s
+      or rely on inline asm).
+
+    x86_64-only:
+      0002 sigsetjmp PLT stub      (x86_64 specific)
+      0030 out-of-line syscall wrappers (x86_64 raw asm, replaces inline asm)
+      0031 fenv                    (x86_64 specific)
+      0040 SysV-AMD64 va_list      (routes va_* through 4-arg __va_start/__va_arg
+                                   from tcc-mes' tcc_x86_64_stdarg.h; also
+                                   drops tcc's va_list.c into src/stdarg/ so
+                                   __va_start/__va_arg land in libc.a.
+                                   __va_arg's arg_type is hardcoded GP so
+                                   ``%f`` won't round-trip -- scaffold FP
+                                   limitation, fixed downstream.)
+
+    aarch64-only (tcc has no AArch64 assembler/inline-asm operands).  These are
+    three concern-grouped unified diffs squashed from the proven 21-patch series
+    in MES-replacement/steps/musl-1.1.24/patches/ (see each patch header for the
+    upstream numbers it subsumes):
+      aarch64-01-va_list          (alltypes.h.in + <stdarg.h>: AAPCS64 va_list
+                                   via tcc's 2-arg __va_start/__va_arg builtins)
+      aarch64-02-asm-to-c         (every AArch64 .s / inline-asm source rewritten
+                                   as C emitting raw instruction words: crt_arch,
+                                   syscall, atomic, pthread_arch, and the crt/
+                                   fenv/ldso/setjmp/signal/thread .s files)
+      aarch64-03-drop-asm-barriers (drop the anti-DCE asm barriers in
+                                   __libc_start_main and explicit_bzero)"""
 
     homepage = "https://musl.libc.org/"
     url = "https://www.musl-libc.org/releases/musl-1.1.24.tar.gz"
@@ -71,19 +79,32 @@ class BootstrapMuslScaffold(Package):
     depends_on("bootstrap-gmake-mes", type="build")
     depends_on("bootstrap-linux-headers-seed", type="build")
 
+    # Shared patches (both architectures).
     patch("0001-EMPTY_LIB_NAMES-add-g-so-tcc-can-resolve-lg.patch")
     patch("0004-Remove-crt-rcrt1.c-static-PIE-startup-unused-with-di.patch")
     patch("0006-Strip-C99-static-N-array-declarators.patch")
     patch("0020-Makefile-archive-an-empty-placeholder-.o-into-EMPTY_.patch")
-    patch("0030-syscall-x86_64.patch")
-    patch("0031-fenv.patch")
-    patch("0002-sigsetjmp-x86_64-plt.patch")
-    patch("0040-x86_64-sysv-va_list.patch")
+
+    # x86_64-only patches.
+    patch("0002-sigsetjmp-x86_64-plt.patch", when="target=x86_64:")
+    patch("0030-syscall-x86_64.patch", when="target=x86_64:")
+    patch("0031-fenv.patch", when="target=x86_64:")
+    patch("0040-x86_64-sysv-va_list.patch", when="target=x86_64:")
+
+    # aarch64-only patches (concern-grouped; see module docstring).
+    patch("aarch64-01-va_list.patch", when="target=aarch64:")
+    patch("aarch64-02-asm-to-c.patch", when="target=aarch64:")
+    patch("aarch64-03-drop-asm-barriers.patch", when="target=aarch64:")
 
     def patch(self):
-        # remove complex and x86_64 specific math
-        shutil.rmtree(join_path(self.stage.source_path, "src", "complex"))
-        shutil.rmtree(join_path(self.stage.source_path, "src", "math", "x86_64"))
+        # tcc cannot parse C99 _Complex, so src/complex goes on both arches.
+        # The arch-specific math dir is .s/inline-asm tcc cannot build; drop the
+        # one matching the host arch (the other arch's dir is harmless but we
+        # only ever stage one tree per build).
+        src = self.stage.source_path
+        shutil.rmtree(join_path(src, "src", "complex"))
+        arch = "aarch64" if str(self.spec.target.family) == "aarch64" else "x86_64"
+        shutil.rmtree(join_path(src, "src", "math", arch))
 
     def install(self, spec, prefix):
         cc = join_path(spec["bootstrap-tcc-mes"].prefix.bin, "tcc")
@@ -99,7 +120,7 @@ class BootstrapMuslScaffold(Package):
         sh(
             "./configure",
             "CC=" + cc,
-            "--target=x86_64-linux-musl",
+            f"--target={spec.target.family}-linux-musl",
             "--prefix=" + prefix,
             "--syslibdir=" + join_path(prefix, "lib"),
             "--disable-shared",

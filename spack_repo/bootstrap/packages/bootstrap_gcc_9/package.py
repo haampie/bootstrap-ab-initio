@@ -66,6 +66,7 @@ class BootstrapGcc9(Package):
         gcc = join_path(spec["bootstrap-gcc-stage1"].prefix, "bin", "gcc")
         gxx = join_path(spec["bootstrap-gcc-stage1"].prefix, "bin", "g++")
         sysroot = spec["bootstrap-musl-12"].prefix
+        triple = "%s-unknown-linux-musl" % spec.target.family
         return [
             "CC=" + gcc,
             "CXX=" + gxx,
@@ -73,9 +74,9 @@ class BootstrapGcc9(Package):
             "CXX_FOR_BUILD=" + gxx,
             "MAKEINFO=true",
             "--prefix=" + prefix,
-            "--build=x86_64-unknown-linux-musl",
-            "--host=x86_64-unknown-linux-musl",
-            "--target=x86_64-unknown-linux-musl",
+            "--build=" + triple,
+            "--host=" + triple,
+            "--target=" + triple,
             "--with-sysroot=" + str(sysroot),
             "--with-native-system-header-dir=/include",
             # NO --with-gmp/--with-mpfr/--with-mpc: in-tree gmp/ mpfr/ mpc/ dirs
@@ -112,6 +113,11 @@ class BootstrapGcc9(Package):
             filter(None, [join_path(self.stage.source_path, "mpfr", "src"),
                           os.environ.get("C_INCLUDE_PATH", "")])
         )
+        # In-tree gmp's AC_PROG_LEX fatally runs flex's output probe when flex is
+        # on PATH (it is on the aarch64 host, absent on the old x86_64 box) and
+        # dies "cannot find output from flex". flex is only used by gmp demos, so
+        # preseed the cache var to skip the probe (same trick bootstrap-gmp uses).
+        os.environ["ac_cv_prog_lex_root"] = "lex.yy"
         # gmp-6.1.0/mpfr-3.1.4/mpc-1.0.3 predate or borderline-support the `musl`
         # OS in their bundled config.sub; GCC 9.5's top-level pair knows it, so
         # overwrite the bundled ones to be safe (harmless if already current).

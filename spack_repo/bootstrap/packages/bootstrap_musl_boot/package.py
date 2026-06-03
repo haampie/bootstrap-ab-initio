@@ -48,19 +48,31 @@ class BootstrapMuslBoot(Package):
     depends_on("bootstrap-gmake-mes", type="build")
     depends_on("bootstrap-linux-headers-seed", type="build")
 
+    # Shared patches (both architectures).
     patch("0001-EMPTY_LIB_NAMES-add-g-so-tcc-can-resolve-lg.patch")
     patch("0004-Remove-crt-rcrt1.c-static-PIE-startup-unused-with-di.patch")
     patch("0006-Strip-C99-static-N-array-declarators.patch")
     patch("0020-Makefile-archive-an-empty-placeholder-.o-into-EMPTY_.patch")
-    patch("0030-syscall-x86_64.patch")
-    patch("0031-fenv.patch")
-    patch("0002-sigsetjmp-x86_64-plt.patch")
-    patch("0040-x86_64-sysv-va_list.patch")
+
+    # x86_64-only patches.
+    patch("0002-sigsetjmp-x86_64-plt.patch", when="target=x86_64:")
+    patch("0030-syscall-x86_64.patch", when="target=x86_64:")
+    patch("0031-fenv.patch", when="target=x86_64:")
+    patch("0040-x86_64-sysv-va_list.patch", when="target=x86_64:")
+
+    # aarch64-only patches (the same concern-grouped set as bootstrap-musl-scaffold;
+    # this is the same musl source with the same tcc language gaps).
+    patch("aarch64-01-va_list.patch", when="target=aarch64:")
+    patch("aarch64-02-asm-to-c.patch", when="target=aarch64:")
+    patch("aarch64-03-drop-asm-barriers.patch", when="target=aarch64:")
 
     def patch(self):
-        # remove complex and x86_64 specific math (tcc cannot parse _Complex)
-        shutil.rmtree(join_path(self.stage.source_path, "src", "complex"))
-        shutil.rmtree(join_path(self.stage.source_path, "src", "math", "x86_64"))
+        # tcc cannot parse C99 _Complex (src/complex, both arches); the
+        # arch-specific src/math/<arch> shims are .s/inline-asm tcc cannot build.
+        src = self.stage.source_path
+        shutil.rmtree(join_path(src, "src", "complex"))
+        arch = "aarch64" if str(self.spec.target.family) == "aarch64" else "x86_64"
+        shutil.rmtree(join_path(src, "src", "math", arch))
 
     def install(self, spec, prefix):
         cc = join_path(spec["bootstrap-tcc-musl-stage1"].prefix.bin, "tcc")
@@ -72,7 +84,7 @@ class BootstrapMuslBoot(Package):
         sh(
             "./configure",
             "CC=" + cc,
-            "--target=x86_64-linux-musl",
+            f"--target={spec.target.family}-linux-musl",
             "--prefix=" + prefix,
             "--syslibdir=" + join_path(prefix, "lib"),
             "--disable-shared",

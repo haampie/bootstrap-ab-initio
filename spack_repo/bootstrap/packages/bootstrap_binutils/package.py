@@ -17,9 +17,14 @@ class BootstrapBinutils(Package):
     Carried as ``type=(build,run)`` by the gcc/musl stages so as/ld/ar reach
     their PATH (cf. the bootstrap-toolchain-run-deps memory). No ``c`` virtual.
 
-    Patches: NONE. The two AArch64 patches in the steps dir are arch-specific
-    (the elfnn-aarch64 HOWTO preprocessor fix) or only kept for Guix parallelism
-    (dropping gas/read.c's wchar.h include -- musl *has* wchar.h). Add reactively.
+    Patches: x86_64 needs NONE. aarch64 needs ONE: the elfnn-aarch64 HOWTO
+    preprocessor fix (tcc 0.9.26 cannot expand a HOWTO macro call whose argument
+    list contains an ``#if/#else/#endif`` -- it stops at the first directive and
+    leaks bare ``64,`` tokens into the reloc table, failing with "'}' expected
+    (got ',')" at elfnn-aarch64.c:1811). The patch hoists the three TLS-reloc
+    name-string choices into plain macros defined once at the top of the file.
+    The other steps-dir AArch64 patch (dropping gas/read.c's wchar.h include) is
+    NOT needed -- musl *has* wchar.h; it was only kept for Guix parallelism.
 
     Host bison/flex/m4 build the generated parsers binutils 2.30 doesn't ship;
     they don't enter the artifact (only the generated .c files do)."""
@@ -33,6 +38,10 @@ class BootstrapBinutils(Package):
 
     conflicts("platform=darwin")
     conflicts("platform=windows")
+
+    # aarch64: hoist #if/#else out of the TLS HOWTO macro args (tcc 0.9.26 cannot
+    # expand a macro call with a directive inside its argument list). See docstring.
+    patch("binutils-arm64-elfnn-howto.patch", when="target=aarch64:")
 
     depends_on("bootstrap-tcc-musl", type="build")
     depends_on("bootstrap-musl-boot", type="build")
@@ -85,9 +94,9 @@ class BootstrapBinutils(Package):
             "RANLIB=true",
             "MAKEINFO=true",
             "CFLAGS=-g",
-            "--build=x86_64-linux-musl",
-            "--host=x86_64-linux-musl",
-            "--target=x86_64-linux-musl",
+            "--build=%s-linux-musl" % spec.target.family,
+            "--host=%s-linux-musl" % spec.target.family,
+            "--target=%s-linux-musl" % spec.target.family,
             "--prefix=" + prefix,
             "--with-sysroot=/",
             # ld/ generates its emulation sources via a recursive `make

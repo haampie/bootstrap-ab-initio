@@ -9,7 +9,34 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-# --- order-significant lists ported verbatim from pass1.kaem ---
+# MES/M2libc spell the two targets we support "amd64" and "arm64"; the rest of
+# the toolchain (TCC_TARGET_*, the mes lib/<arch>-mes-gcc dirs, the kernel header
+# dir) keys off the GNU-ish "x86_64"/"aarch64" spelling.  Map one host -> both.
+_M2_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}  # keyed by mes_arch
+_TCC_TARGET = {"x86_64": "X86_64", "aarch64": "ARM64"}  # keyed by mes_arch
+
+
+def _unified_libc(mes_arch):
+    """UNIFIED_LIBC retargeted: the only arch-specific members are the four
+    ``<arch>-mes-gcc`` runtime files (substring-substituted below)."""
+    return [e.replace("x86_64-mes-gcc", mes_arch + "-mes-gcc") for e in UNIFIED_LIBC]
+
+
+def _headers(mes_arch):
+    """HEADERS retargeted: swap the ``linux/x86_64`` arch header dir, and ship
+    ``tcc_x86_64_stdarg.h`` only on x86_64 (aarch64 has no such header)."""
+    out = []
+    for src, dst in HEADERS:
+        if src == "tcc_x86_64_stdarg.h":
+            if mes_arch == "x86_64":
+                out.append((src, dst))
+            continue
+        out.append((src.replace("linux/x86_64/", "linux/%s/" % mes_arch), dst))
+    return out
+
+
+# --- order-significant lists ported verbatim from pass1.kaem (x86_64 form;
+#     _unified_libc()/_headers() retarget them for aarch64) ---
 UNIFIED_LIBC = [
     "ctype/isalnum.c",
     "ctype/isalpha.c",
@@ -345,22 +372,27 @@ HEADERS = [
 
 
 class BootstrapTccMes(Package):
-    """Bootstrappable x86_64 TCC 0.9.26, grown from a hex0 seed with no system
-    compiler.
+    """Bootstrappable TCC 0.9.26 (x86_64 or AArch64), grown from a hex0 seed with
+    no system compiler.
 
     This is the first brick of the new full-source bootstrap: it replaces the
     GNU-Mes-based ``mes-boot`` -> ``tcc-boot0`` -> ``tcc-boot`` stages with the
     faster ``MES-replacement`` C-compiler (``tcc_cc``).
 
-    The recipe is a faithful Python port of the *amd64* path of
-    ``MES-replacement``'s ``target_amd64/tools-*-kaem.kaem`` (toolchain) and
-    ``steps/tcc-0.9.26/pass1.kaem`` (tcc). MES-replacement was written for
-    live-bootstrap's pure chroot with zero host tools, so it bootstraps its own
-    ``kaem`` shell, coreutils, ``simple-patch`` and a ``steps`` package manager.
-    Spack already supplies all of that (fetch/checksum/extract/patch) in the
-    parent process, so we discard it and keep only the irreducible core: the
-    hex0 seed plus the compile sequence, driven from Python. No kaem, no chroot,
-    no path relocation -- we use real build/prefix paths.
+    The recipe is a faithful Python port of ``MES-replacement``'s
+    ``target_<arch>/tools-*-kaem.kaem`` (toolchain) and
+    ``steps/tcc-0.9.26/pass1.kaem`` (tcc), which is itself parameterised by
+    ``${ARCH}`` (amd64/arm64). MES-replacement was written for live-bootstrap's
+    pure chroot with zero host tools, so it bootstraps its own ``kaem`` shell,
+    coreutils, ``simple-patch`` and a ``steps`` package manager. Spack already
+    supplies all of that (fetch/checksum/extract/patch) in the parent process, so
+    we discard it and keep only the irreducible core: the hex0 seed plus the
+    compile sequence, driven from Python. No kaem, no chroot, no path relocation
+    -- we use real build/prefix paths.
+
+    The same recipe builds both targets: it selects the per-arch seed set, TCC
+    target macro, mes ``<arch>-mes-gcc`` runtime files and (AArch64 only) the
+    ``lib-arm64.c`` soft-float helpers + the nine arm64 tcc source patches.
 
     Like the rest of the early chain it does *not* ``depends_on("c")``."""
 
@@ -371,47 +403,72 @@ class BootstrapTccMes(Package):
     version(
         "0.9.26",
         sha256="6b8cbd0a5fed0636d4f0f763a603247bc1935e206e1cc5bda6a2818bab6e819f",
-        url="file:///home/harmen/projects/MES-replacement/distfiles/tcc-0.9.26.tar.gz",
+        url="file:///home/harmenstoppels.linux/MES-replacement/distfiles/tcc-0.9.26.tar.gz",
     )
 
     # GNU Mes supplies the C library (headers + sources) tcc links against.
-    # The `gmake-bootstrap-fixes` branch is v0.27.1 + 11 commits that add the
-    # libc features later stages (notably GNU make 4.4.1) need: assert/NDEBUG,
-    # O_CLOEXEC/O_NONBLOCK/flock, DT_*, ENOTSUP, _POSIX_VERSION, mktemp decl,
-    # O_DIRECTORY fix, and ftruncate/mkfifo/tmpfile (see UNIFIED_LIBC additions).
+    # haampie/mes branch ``spack/0.27`` is v0.27.1 + the x86_64 libc features
+    # later stages need (assert/NDEBUG, O_CLOEXEC/O_NONBLOCK/flock, DT_*, ENOTSUP,
+    # _POSIX_VERSION, mktemp decl, O_DIRECTORY fix, ftruncate/mkfifo/tmpfile) +
+    # the cherry-picked "Add aarch64 libc support" commit (the aarch64
+    # <arch>-mes-gcc runtime, va.c helpers, and setjmp/stdarg/stdint cases). One
+    # ref serves both arches.
     resource(
         name="mes",
-        git="file:///home/harmen/projects/MES-replacement/mes",
-        commit="42ef2c6dfa91b1a9595859b4a0df89e40df32a14",
+        git="https://github.com/haampie/mes.git",
+        commit="ee67b214fcbad0defc436bb25eece8894787a293",
         destination="",
         placement="mes",
     )
 
-    # The make-generated seeds: the one hex0 ELF + the text intermediates that
-    # bootstrap hex2/M1/blood-elf/stack_c/tcc_cc. Built locally for now (see the
-    # repo plan); switch to a GitHub release URL once stable.
+    # The make-generated seeds (``make -C MES-replacement/src``): per-arch hex0
+    # ELF + the text intermediates that bootstrap hex2/M1/blood-elf/stack_c/
+    # tcc_cc. One combined tarball with ``amd64/`` and ``arm64/`` subdirs (uniform
+    # internal names); install() picks its arch. Local path for now; switch to a
+    # GitHub release URL once stable.
     resource(
         name="seeds",
-        sha256="26bb8f62dec11adf717120ef0ca81d7764a930fdc02bea98b38562b0e8e250c2",
-        url="file:///home/harmen/projects/bootstrap-glibc/seeds-build/tcc-mes-seeds-amd64-0.1.tar.gz",
+        sha256="0de6d1f05c66dbe233f82d0a1ef7f79c77b05af781b5fbdbf077d9976eb5bdd7",
+        url="file:///home/harmenstoppels.linux/MES-replacement/distfiles/tcc-mes-seeds-0.3.tar.gz",
         destination="",
         placement="seeds",
     )
 
-    # amd64-only port; the whole chain emits and runs x86_64 from the start.
+    # x86_64 + aarch64 only; the chain emits and runs the host arch from the start.
     conflicts("platform=darwin")
     conflicts("platform=windows")
 
-    # amd64 source fixes, ported from MES-replacement's simple-patches and
-    # applied by Spack *before* the sandbox (the mes patches target the staged
-    # resource tree under mes/).
-    patch("tcc-static-plt.patch")  # tcc: relocate static-exec PLT stubs
-    patch("tcc-va-list.patch")  # tcc: SysV AMD64 va_list, unconditional single def
+    # x86_64 source fixes (ported from MES-replacement's amd64 simple-patches),
+    # applied by Spack *before* the sandbox.
+    patch("tcc-static-plt.patch", when="target=x86_64:")  # tcc: relocate static-exec PLT stubs
+    patch("tcc-va-list.patch", when="target=x86_64:")  # tcc: SysV AMD64 va_list, single def
+
+    # AArch64 source fixes: tcc 0.9.26 has no arm64 assembler and the seed
+    # tcc_cc miscompiles a few constructs.  These are real unified diffs derived
+    # from MES-replacement's arm64 simple-patches, grouped by concern.  The
+    # assembler body itself (``arm64-asm.c``) is dropped in during install()
+    # from the seed set; the asm-wiring patch only adds the ``#include``.
+    patch("tcc-arm64-01-asm-wiring.patch", when="target=aarch64:")
+    patch("tcc-arm64-02-codegen.patch", when="target=aarch64:")
+    patch("tcc-arm64-03-varargs.patch", when="target=aarch64:")
+    patch("tcc-arm64-04-long-double-suffix.patch", when="target=aarch64:")
+
+    @property
+    def mes_arch(self):
+        """GNU-ish arch spelling used by mes/tcc (``x86_64`` | ``aarch64``)."""
+        return "aarch64" if str(self.spec.target.family) == "aarch64" else "x86_64"
 
     def install(self, spec, prefix):
         src = self.stage.source_path  # the tcc-0.9.26-1147-gee75a10c tree
-        seeds = join_path(src, "seeds")
         mes = join_path(src, "mes")
+
+        mes_arch = self.mes_arch                  # x86_64 | aarch64
+        m2 = _M2_ARCH[mes_arch]                   # amd64 | arm64 (seed subdir + -a flag)
+        tcc_target = _TCC_TARGET[mes_arch]        # X86_64 | ARM64
+        link_libarm64 = mes_arch == "aarch64"     # arm64 needs lib-arm64.c soft-float
+
+        # combined seeds tarball -> seeds/<amd64|arm64>/ (uniform internal names).
+        seeds = join_path(src, "seeds", m2)
 
         tmp = join_path(src, "tmp")
         tools = join_path(src, "tools")
@@ -422,18 +479,18 @@ class BootstrapTccMes(Package):
         incdir = join_path(prefix, "include", "mes")
         mkdirp(bindir, libdir, join_path(libdir, "tcc"), incdir)
 
-        elf = join_path(seeds, "ELF-amd64-debug.hex2")
+        elf = join_path(seeds, "ELF-debug.hex2")
         intro = join_path(seeds, "stack_c_intro.M1")
         # tcc_cc keeps the current source filename in 101-byte position buffers
         # (tcc_cc.c) used to format its warnings, so any *source* path it opens
         # must stay short -- a long absolute path overflows them and segfaults.
         # We therefore feed it source inputs by short relative paths (cwd=src);
-        # output (-o) and -D values are unaffected. ``seeds`` is ``src/seeds``.
-        stdlib_c = join_path("seeds", "stdlib.c")
+        # output (-o) and -D values are unaffected. ``seeds`` is ``src/seeds/<m2>``.
+        stdlib_c = join_path("seeds", m2, "stdlib.c")
 
-        # Order-significant lists ported verbatim from pass1.kaem (module-level).
-        unified_libc = UNIFIED_LIBC
-        headers = HEADERS
+        # Order-significant lists ported from pass1.kaem, retargeted per arch.
+        unified_libc = _unified_libc(mes_arch)
+        headers = _headers(mes_arch)
 
         def chmod_x(path):
             st = os.stat(path).st_mode
@@ -481,9 +538,9 @@ class BootstrapTccMes(Package):
         chmod_x(tcc_cc)
 
         # ---- Phase 2a: config.h's --------------------------------------------
-        # The amd64 tcc/mes source fixes are already applied by Spack's patch()
-        # directives (pre-sandbox). Empty config.h's: all configuration comes via
-        # the -D flags below.
+        # The per-arch tcc source fixes are already applied (Spack patch()
+        # directives: x86_64 two, aarch64 four -- including arm64-asm.c). Empty
+        # config.h's: all configuration comes via the -D flags below.
         for cfg in (join_path(mes, "include", "mes", "config.h"),
                     join_path(src, "config.h")):
             open(cfg, "w").close()
@@ -495,7 +552,7 @@ class BootstrapTccMes(Package):
             d = [
                 "-D", "BOOTSTRAP=1",
                 "-D", "HAVE_LONG_LONG=1",
-                "-D", "TCC_TARGET_X86_64=1",
+                "-D", "TCC_TARGET_%s=1" % tcc_target,
                 "-D", 'CONFIG_TCCDIR="%s/tcc"' % libdir,
                 "-D", 'CONFIG_TCC_CRTPREFIX="%s"' % libdir,
                 "-D", 'CONFIG_TCC_ELFINTERP="/mes/loader"',
@@ -510,11 +567,11 @@ class BootstrapTccMes(Package):
             return list(extra) + d
 
         tcc_s = join_path(tools, "tcc_s")
-        run(tcc_cc, "-a", "amd64", "-o", join_path(tmp, "tcc.sl"),
+        run(tcc_cc, "-a", m2, "-o", join_path(tmp, "tcc.sl"),
             *tcc_defs(("-D", 'CONFIG_SYSROOT="/"', "-D", "CONFIG_TCC_LIBTCC1_MES=0")),
             stdlib_c, "tcc.c", cwd=src)
         run(stack_c, "-i", intro, join_path(tmp, "tcc.sl"), "-o", join_path(tmp, "tcc_s.M1"))
-        run(blood_elf, "-a", "amd64", "--file", join_path(tmp, "tcc_s.M1"),
+        run(blood_elf, "-a", m2, "--file", join_path(tmp, "tcc_s.M1"),
             "--little-endian", "--output", join_path(tmp, "tcc_s.blood_elf"))
         run(m1, join_path(tmp, "tcc_s.M1"), "-o", join_path(tmp, "tcc_s.macro"))
         run(hex2, "-o", tcc_s, elf,
@@ -535,28 +592,42 @@ class BootstrapTccMes(Package):
         for rel in unified_libc:
             with open(join_path(mes, "lib", rel), "rb") as f:
                 parts.append(f.read())
-        # amd64: append the (patched) SysV AMD64 va_list runtime
-        with open(join_path(src, "lib", "va_list.c"), "rb") as f:
+        # Append the va runtime: x86_64 uses the (patched) SysV AMD64 va_list.c
+        # from the tcc tree; aarch64 uses the mes AAPCS64 __mes_va_arg_* helpers.
+        if mes_arch == "x86_64":
+            va_src = join_path(src, "lib", "va_list.c")
+        else:
+            va_src = join_path(mes, "lib", "%s-mes-gcc" % mes_arch, "va.c")
+        with open(va_src, "rb") as f:
             parts.append(f.read())
         with open(join_path(mes, "unified-libc.c"), "wb") as f:
             f.write(b"".join(parts))
 
-        inc = ["-I", "include", "-I", "include/linux/x86_64"]
+        inc = ["-I", "include", "-I", "include/linux/%s" % mes_arch]
+        # arm64 long double is 128-bit with no hardware quad-float: libtcc1 needs
+        # the lib-arm64.c TFmode soft-float helpers (LINK_LIBARM64 in pass1.kaem).
+        lib_arm64_c = join_path(src, "lib", "lib-arm64.c")
 
         def build_libc(cc):
             """Compile crt1.o + libc.a + libtcc1.a with compiler ``cc`` (cwd=mes)."""
             with working_dir(mes):
                 run(cc, "-c", "-D", "HAVE_CONFIG_H=1", *inc,
                     "-o", join_path(libdir, "crt1.o"),
-                    "lib/linux/x86_64-mes-gcc/crt1.c")
+                    "lib/linux/%s-mes-gcc/crt1.c" % mes_arch)
                 run(cc, "-c", "-D", "HAVE_CONFIG_H=1", "-D", "HAVE_LONG_LONG=1",
                     "-D", "HAVE_FLOAT=1", *inc, "-o", "libtcc1.o", "lib/libtcc1.c")
-                run(cc, "-ar", "cr", join_path(libdir, "tcc", "libtcc1.a"), "libtcc1.o")
+                libtcc1_objs = ["libtcc1.o"]
+                if link_libarm64:
+                    run(cc, "-c", "-D", "HAVE_CONFIG_H=1", "-D", "HAVE_LONG_LONG=1",
+                        "-D", "HAVE_FLOAT=1", *inc, "-o", "lib-arm64.o", lib_arm64_c)
+                    libtcc1_objs.append("lib-arm64.o")
+                run(cc, "-ar", "cr", join_path(libdir, "tcc", "libtcc1.a"), *libtcc1_objs)
                 run(cc, "-c", "-D", "HAVE_CONFIG_H=1", *inc,
                     "-o", "unified-libc.o", "unified-libc.c")
                 run(cc, "-ar", "cr", join_path(libdir, "libc.a"), "unified-libc.o")
 
-        # First libc with tcc_s, plus the empty amd64 crti/crtn and libgetopt.
+        # First libc with tcc_s, plus the empty crti/crtn (both arches: only the
+        # 32-bit x86 path builds real ones) and libgetopt.
         build_libc(tcc_s)
         open(join_path(libdir, "crti.o"), "w").close()
         open(join_path(libdir, "crtn.o"), "w").close()
@@ -573,7 +644,7 @@ class BootstrapTccMes(Package):
                 "-D", "HAVE_LONG_LONG=1",
                 "-D", "HAVE_SETJMP=1",
                 "-I", ".", "-I", incdir,
-                "-D", "TCC_TARGET_X86_64=1",
+                "-D", "TCC_TARGET_%s=1" % tcc_target,
                 "-D", 'CONFIG_TCCDIR="%s/tcc"' % libdir,
                 "-D", 'CONFIG_TCC_CRTPREFIX="%s"' % libdir,
                 "-D", 'CONFIG_TCC_ELFINTERP="/mes/loader"',

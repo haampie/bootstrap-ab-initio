@@ -67,7 +67,11 @@ class BootstrapLinuxHeaders(Package):
         # pass (a miscompiled fixdep spins forever), but gcc-stage0 ships a specs
         # file that disables tree-ccp for everything it compiles, so HOSTCC just
         # works here -- no per-build flag needed. See bootstrap-gcc-stage0.
-        make("headers", "ARCH=x86_64", "HOSTCC=" + gcc)
+        #
+        # Linux's ARCH= uses its own arch names: aarch64 -> arm64 (selects the
+        # arm64 asm/ uapi); x86_64 stays x86_64.
+        karch = "arm64" if spec.target.family == "aarch64" else "x86_64"
+        make("headers", "ARCH=" + karch, "HOSTCC=" + gcc)
 
         # Install usr/include/**.h into <prefix>/include (Guix install phase).
         for dirpath, _dirs, files in os.walk("usr/include"):

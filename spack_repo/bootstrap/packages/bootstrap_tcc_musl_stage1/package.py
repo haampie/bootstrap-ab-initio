@@ -10,6 +10,25 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
+#: AArch64 ``alloca``, the analogue of upstream tcc's lib/alloca86_64.S. The
+#: bootstrappable tcc 0.9.26 fork does not inline alloca(); a source-level
+#: alloca(n) compiles to ``bl alloca`` (size in x0, result in x0). musl ships no
+#: such symbol, so this trampoline supplies it. tcc's arm64 assembler accepts
+#: only ``.int``/``.word`` data directives, so each instruction is its raw
+#: little-endian opcode -- the exact encodings arm64-gen.c emits for VLAs. It is
+#: a leaf function: on AArch64 the return address is in x30 (not on the stack,
+#: unlike x86's pop/repush), and the lowered sp is reclaimed for free by every
+#: caller's ``mov sp,x29`` epilogue (arm64-gen.c gfunc_epilog).
+_ALLOCA_ARM64_S = """\
+.globl alloca
+alloca:
+    .int 0x91003c00   /* add x0, x0, #15   ; round the request size up... */
+    .int 0x927cec00   /* bic x0, x0, #15   ; ...to a multiple of 16        */
+    .int 0xcb2063ff   /* sub sp, sp, x0    ; grow the stack                */
+    .int 0x910003e0   /* mov x0, sp        ; return a pointer to the block */
+    .int 0xd65f03c0   /* ret               ; br x30                        */
+"""
+
 
 class BootstrapTccMuslStage1(Package):
     """tcc 0.9.26 linked against the (broken) scaffold musl -- the INTERMEDIATE
@@ -39,7 +58,7 @@ class BootstrapTccMuslStage1(Package):
     version(
         "0.9.26",
         sha256="6b8cbd0a5fed0636d4f0f763a603247bc1935e206e1cc5bda6a2818bab6e819f",
-        url="file:///home/harmen/projects/MES-replacement/distfiles/tcc-0.9.26.tar.gz",
+        url="file:///home/harmenstoppels.linux/MES-replacement/distfiles/tcc-0.9.26.tar.gz",
     )
 
     conflicts("platform=darwin")
@@ -48,9 +67,18 @@ class BootstrapTccMuslStage1(Package):
     depends_on("bootstrap-tcc-mes", type="build")
     depends_on("bootstrap-musl-scaffold", type="build")
 
-    # Same amd64 tcc source fixes as bootstrap-tcc-mes (applied pre-sandbox).
-    patch("tcc-static-plt.patch")
-    patch("tcc-va-list.patch")
+    # Same per-arch tcc source fixes as bootstrap-tcc-mes (applied pre-sandbox).
+    patch("tcc-static-plt.patch", when="target=x86_64:")
+    patch("tcc-va-list.patch", when="target=x86_64:")
+    patch("tcc-arm64-01-asm-wiring.patch", when="target=aarch64:")
+    patch("tcc-arm64-02-codegen.patch", when="target=aarch64:")
+    patch("tcc-arm64-03-varargs.patch", when="target=aarch64:")
+    patch("tcc-arm64-04-long-double-suffix.patch", when="target=aarch64:")
+
+    @property
+    def mes_arch(self):
+        """GNU-ish arch spelling used by mes/tcc (``x86_64`` | ``aarch64``)."""
+        return "aarch64" if str(self.spec.target.family) == "aarch64" else "x86_64"
 
     def install(self, spec, prefix):
         src = self.stage.source_path
@@ -58,6 +86,11 @@ class BootstrapTccMuslStage1(Package):
         musl = spec["bootstrap-musl-scaffold"].prefix
         musllib = join_path(musl, "lib")
         muslinc = join_path(musl, "include")
+
+        # x86_64 | aarch64; selects the TCC target macro and the libtcc1 runtime.
+        mes_arch = self.mes_arch
+        tcc_target = "X86_64" if mes_arch == "x86_64" else "ARM64"
+        tcc_target_def = "-DTCC_TARGET_%s=1" % tcc_target
 
         libdir = join_path(prefix, "lib", "mes")  # keep tcc-mes-style layout
         tccdir = join_path(libdir, "tcc")
@@ -71,24 +104,55 @@ class BootstrapTccMuslStage1(Package):
         open(join_path(src, "config.h"), "w").close()
 
         # libtcc1.a (compiler runtime helpers), built by the seed tcc.
-        # MUST include alloca86_64.S: tcc does NOT inline alloca -- libtcc.c maps
-        # __builtin_alloca -> the *symbol* alloca, which lives in lib/alloca86_64.S.
-        # Unlike mes libc (which ships its own `alloca`), musl has none (it relies
-        # on the compiler builtin), so without this every alloca-using program
-        # tcc-musl links (make, binutils, gcc) gets "undefined symbol alloca",
-        # and their configure falls back to gnulib's C_ALLOCA path. Archive
-        # members are pulled only when referenced, so tcc.c's own self-host
-        # (no alloca) and the stage2==stage3 fixpoint are unaffected.
+        #
+        # x86_64 MUST include alloca86_64.S: tcc does NOT inline alloca --
+        # libtcc.c maps __builtin_alloca -> the *symbol* alloca, which lives in
+        # lib/alloca86_64.S. Unlike mes libc (which ships its own `alloca`), musl
+        # has none (it relies on the compiler builtin), so without this every
+        # alloca-using program tcc-musl links (make, binutils, gcc) gets
+        # "undefined symbol alloca", and their configure falls back to gnulib's
+        # C_ALLOCA path. Archive members are pulled only when referenced, so
+        # tcc.c's own self-host (no alloca) and the stage2==stage3 fixpoint are
+        # unaffected.
+        #
+        # aarch64 needs lib-arm64.c: the TFmode soft-float helpers
+        # (__addtf3/__multf3/... + float/int conversions) that 128-bit
+        # ``long double`` requires (aarch64 has no hardware quad-float). It ALSO
+        # needs alloca-arm64.S, the exact analogue of alloca86_64.S: this tcc
+        # fork does not inline alloca() -- it emits a plain ``bl alloca`` -- and
+        # musl ships no such symbol, so without it every alloca-using program
+        # this tcc links (make, binutils, gcc) fails with "undefined symbol
+        # alloca" (same reason x86_64 archives alloca86_64.S above). tcc's arm64
+        # assembler accepts only .int data words, so the trampoline is emitted
+        # as raw opcodes (the same ones arm64-gen.c uses for VLAs); see
+        # ``_ALLOCA_ARM64_S``. Note aarch64 does NOT compile upstream
+        # lib/libtcc1.c: that file's only non-portable code is an i386 inline-asm
+        # block guarded ``#if !X86_64 && !ARM`` -> on aarch64 it falls through to
+        # ``#error unsupported CPU type``, and its 64-bit integer helpers
+        # (__divdi3/__udivmoddi4/...) are unneeded since aarch64 divides
+        # natively (cf. steps/musl-1.1.24/log.md step 4).
         libtcc1 = join_path(tccdir, "libtcc1.a")
         with working_dir(src):
-            Executable(seed)(
-                "-c", "-DHAVE_FLOAT=1", "-DHAVE_LONG_LONG=1", "-DTCC_TARGET_X86_64=1",
-                "-I", "include", "-o", "libtcc1.o", "lib/libtcc1.c",
-            )
-            Executable(seed)(
-                "-c", "-DTCC_TARGET_X86_64=1", "-o", "alloca86_64.o", "lib/alloca86_64.S",
-            )
-            Executable(seed)("-ar", "cr", libtcc1, "libtcc1.o", "alloca86_64.o")
+            if mes_arch == "x86_64":
+                Executable(seed)(
+                    "-c", "-DHAVE_FLOAT=1", "-DHAVE_LONG_LONG=1", tcc_target_def,
+                    "-I", "include", "-o", "libtcc1.o", "lib/libtcc1.c",
+                )
+                Executable(seed)(
+                    "-c", tcc_target_def, "-o", "alloca86_64.o", "lib/alloca86_64.S",
+                )
+                Executable(seed)("-ar", "cr", libtcc1, "libtcc1.o", "alloca86_64.o")
+            else:
+                Executable(seed)(
+                    "-c", "-DHAVE_FLOAT=1", "-DHAVE_LONG_LONG=1", tcc_target_def,
+                    "-I", "include", "-o", "lib-arm64.o", "lib/lib-arm64.c",
+                )
+                with open(join_path(src, "alloca-arm64.S"), "w") as f:
+                    f.write(_ALLOCA_ARM64_S)
+                Executable(seed)(
+                    "-c", tcc_target_def, "-o", "alloca-arm64.o", "alloca-arm64.S",
+                )
+                Executable(seed)("-ar", "cr", libtcc1, "lib-arm64.o", "alloca-arm64.o")
 
         def defs():
             return [
@@ -97,7 +161,7 @@ class BootstrapTccMuslStage1(Package):
                 "-DHAVE_BITFIELD=1",
                 "-DHAVE_LONG_LONG=1",
                 "-DHAVE_SETJMP=1",
-                "-DTCC_TARGET_X86_64=1",
+                tcc_target_def,
                 '-DCONFIG_TCCDIR="%s"' % tccdir,
                 '-DCONFIG_SYSROOT="/"',
                 '-DCONFIG_TCC_CRTPREFIX="%s"' % musllib,

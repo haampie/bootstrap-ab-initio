@@ -55,7 +55,7 @@ class BootstrapMusl12(Package):
         sh(
             "./configure",
             "CC=" + gcc,
-            "--target=x86_64-linux-musl",
+            "--target=%s-linux-musl" % spec.target.family,
             "--prefix=" + prefix,
             "--syslibdir=" + join_path(prefix, "lib"),
             "--disable-shared",

@@ -39,10 +39,11 @@ class BootstrapMpfr(Package):
         return [
             "CC=%s -L%s" % (tcc, musllib),
             "CFLAGS=-DHAVE_ALLOCA_H",
-            # MPFR 2.4.2's config.sub predates musl; the triplet is cosmetic
-            # for this pure math lib, so use one the old config.sub recognizes.
-            "--build=x86_64-unknown-linux-gnu",
-            "--host=x86_64-unknown-linux-gnu",
+            # MPFR 2.4.2's config.sub predates musl; the triplet is cosmetic for
+            # this native pure-math-lib build, so use a -gnu triple the old
+            # config.sub recognizes (aarch64/x86_64 are both known to it).
+            "--build=%s-unknown-linux-gnu" % spec.target.family,
+            "--host=%s-unknown-linux-gnu" % spec.target.family,
             "--prefix=" + prefix,
             "--with-gmp=" + str(spec["bootstrap-gmp"].prefix),
             "--enable-static",

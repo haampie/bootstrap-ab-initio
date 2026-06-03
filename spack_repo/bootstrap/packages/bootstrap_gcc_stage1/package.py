@@ -73,6 +73,7 @@ class BootstrapGccStage1(Package):
     def configure_args(self, spec, prefix):
         gcc = join_path(spec["bootstrap-gcc-stage0"].prefix, "bin", "gcc")
         sysroot = spec["bootstrap-musl"].prefix
+        triple = "%s-unknown-linux-musl" % spec.target.family
         return [
             "CC=" + gcc,
             "CC_FOR_BUILD=" + gcc,
@@ -83,9 +84,9 @@ class BootstrapGccStage1(Package):
             "CFLAGS=-DHAVE_ALLOCA_H",
             "MAKEINFO=true",
             "--prefix=" + prefix,
-            "--build=x86_64-unknown-linux-musl",
-            "--host=x86_64-unknown-linux-musl",
-            "--target=x86_64-unknown-linux-musl",
+            "--build=" + triple,
+            "--host=" + triple,
+            "--target=" + triple,
             "--with-sysroot=" + str(sysroot),
             "--with-native-system-header-dir=/include",
             # NO --with-gmp/--with-mpfr/--with-mpc: the in-tree gmp/ mpfr/ mpc/
@@ -123,6 +124,11 @@ class BootstrapGccStage1(Package):
             filter(None, [join_path(self.stage.source_path, "mpfr", "src"),
                           os.environ.get("C_INCLUDE_PATH", "")])
         )
+        # In-tree gmp's AC_PROG_LEX fatally runs flex's output probe when flex is
+        # on PATH (it is on the aarch64 host, absent on the old x86_64 box) and
+        # dies "cannot find output from flex". flex is only used by gmp demos, so
+        # preseed the cache var to skip the probe (same trick bootstrap-gmp uses).
+        os.environ["ac_cv_prog_lex_root"] = "lex.yy"
         # gmp-4.3.2/mpfr-2.4.2/mpc-1.0.3 ship pre-2014 config.sub/config.guess
         # that don't know the `musl` OS, so their in-tree configure dies on
         # `x86_64-unknown-linux-musl`. GCC 4.7's own top-level pair (2012) does

@@ -35,7 +35,16 @@ class BootstrapGmp(Package):
     #: build tool providing ``make``
     make_provider = "bootstrap-gmake"
 
-
+    def setup_build_environment(self, env):
+        # AC_PROG_LEX fatally runs the detected flex ("checking lex output file
+        # root... cannot find output from flex; giving up") when a flex is on
+        # PATH but its output probe fails in this build environment. flex is only
+        # used by GMP's demos/calc lexer, never the library, so short-circuit the
+        # probe exactly like bootstrap-binutils: pre-seed the cache var so every
+        # configure skips the check (and sets LEX_OUTPUT_ROOT=lex.yy). The old
+        # x86_64 host had no flex on PATH, so AC_PROG_LEX never ran this probe
+        # there; this keeps both arches building regardless of host flex.
+        env.set("ac_cv_prog_lex_root", "lex.yy")
 
     def configure_args(self, spec, prefix):
         tcc = join_path(spec["bootstrap-tcc-musl"].prefix, "bin", "tcc")
