@@ -1,0 +1,148 @@
+x86_64 SysV AMD64 va_list for tcc, with float-classifying va_arg.
+
+tcc 0.9.26 cannot parse musl's stock 'TYPEDEF __builtin_va_list va_list',
+so redefine va_list as the SysV __va_list_struct and route va_start/va_arg
+through tcc's runtime helpers (verbatim tcc lib/va_list.c, retyped onto
+__musl_va_list_t and archived into THIS libc.a). Unlike the scaffold's
+GP-only variant, va_arg classifies float/double (via
+__builtin_types_compatible_p, which tcc-musl supports) and passes arg_type
+1 so doubles read the XMM save area -- so printf("%f") and double varargs
+round-trip correctly.
+
+--- a/arch/x86_64/bits/alltypes.h.in
++++ b/arch/x86_64/bits/alltypes.h.in
+@@ -2,8 +2,40 @@
+ #define _Int64 long
+ #define _Reg long
+ 
+-TYPEDEF __builtin_va_list va_list;
+-TYPEDEF __builtin_va_list __isoc_va_list;
++#ifndef __DEFINED___musl_va_list_t
++typedef struct __va_list_struct {
++	unsigned int gp_offset;
++	unsigned int fp_offset;
++	union {
++		unsigned int overflow_offset;
++		char *overflow_arg_area;
++	};
++	char *reg_save_area;
++} __musl_va_list_t;
++#define __DEFINED___musl_va_list_t
++#endif
++/* tcc (__TINYC__) has no __builtin_va_list, so it gets the explicit SysV
++   __va_list_struct array form. A real compiler (gcc-stage0 building against
++   this sysroot) gets __builtin_va_list -- ABI-identical on x86_64
++   (__builtin_va_list == struct __va_list_tag[1], same layout as
++   __musl_va_list_t[1]) -- so its own <stdarg.h> va_list typedef does not
++   conflict with this one. */
++#if defined(__NEED_va_list) && !defined(__DEFINED_va_list)
++#ifdef __TINYC__
++typedef __musl_va_list_t va_list[1];
++#else
++typedef __builtin_va_list va_list;
++#endif
++#define __DEFINED_va_list
++#endif
++#if defined(__NEED___isoc_va_list) && !defined(__DEFINED___isoc_va_list)
++#ifdef __TINYC__
++typedef __musl_va_list_t __isoc_va_list[1];
++#else
++typedef __builtin_va_list __isoc_va_list;
++#endif
++#define __DEFINED___isoc_va_list
++#endif
+ 
+ #ifndef __cplusplus
+ TYPEDEF int wchar_t;
+--- a/include/stdarg.h
++++ b/include/stdarg.h
+@@ -9,10 +9,25 @@
+ 
+ #include <bits/alltypes.h>
+ 
+-#define va_start(v,l)   __builtin_va_start(v,l)
+-#define va_end(v)       __builtin_va_end(v)
+-#define va_arg(v,l)     __builtin_va_arg(v,l)
+-#define va_copy(d,s)    __builtin_va_copy(d,s)
++/* tcc 0.9.26 x86_64 has no __builtin_va_*; its runtime exports __va_start /
++   __va_arg over the System V AMD64 __va_list_struct (see tcc-mes'
++   tcc_x86_64_stdarg.h). va_list is a 1-elem array so a va_list parameter
++   decays to a pointer; va_copy dereferences both sides. */
++void __va_start(__musl_va_list_t *__ap, void *__fp);
++void *__va_arg(__musl_va_list_t *__ap, int __type, int __size, int __align);
++
++/* SysV AMD64 class: float/double go in XMM (arg_type 1), everything else in
++   GP (arg_type 0). tcc-musl supports __builtin_types_compatible_p, so classify
++   at compile time -- this makes %f / double varargs round-trip. (long double
++   is x87/MEMORY but rare in the bootstrap toolchain; it falls to GP as before,
++   no regression.) */
++#define __va_argtype(type) \
++    ((__builtin_types_compatible_p(type, float) || \
++      __builtin_types_compatible_p(type, double)) ? 1 : 0)
++#define va_start(ap, last) __va_start(ap, __builtin_frame_address(0))
++#define va_arg(ap, type)   (*(type *)__va_arg(ap, __va_argtype(type), sizeof(type), __alignof__(type)))
++#define va_end(ap)
++#define va_copy(d, s)      (*(d) = *(s))
+ 
+ #ifdef __cplusplus
+ }
+--- /dev/null
++++ b/src/stdarg/va_list.c
+@@ -0,0 +1,57 @@
++/* tcc 0.9.26 x86_64 variadic runtime (verbatim from tcc's lib/va_list.c).
++   Archived into scaffold musl's libc.a so consumers tcc-mes compiles against
++   it can resolve __va_start/__va_arg (tcc-mes bakes them into mes libc.a,
++   which they never link). Retyped onto musl's __musl_va_list_t. */
++
++#include <stdarg.h>
++
++/* Avoid pulling string.h/stdlib.h (size_t etc. not needed here). */
++extern void *memset(void *s, int c, __SIZE_TYPE__ n);
++extern void abort(void);
++
++/* Must match include/stdarg.h: 0 = GP reg, 1 = XMM reg, 2 = stack. */
++enum __va_arg_type {
++    __va_gen_reg, __va_float_reg, __va_stack
++};
++
++void __va_start(__musl_va_list_t *ap, void *fp)
++{
++    memset(ap, 0, sizeof(__musl_va_list_t));
++    *ap = *(__musl_va_list_t *)((char *)fp - 16);
++    ap->overflow_arg_area = (char *)fp + ap->overflow_offset;
++    ap->reg_save_area = (char *)fp - 176 - 16;
++}
++
++void *__va_arg(__musl_va_list_t *ap,
++               int arg_type,
++               int size, int align)
++{
++    size = (size + 7) & ~7;
++    align = (align + 7) & ~7;
++    switch (arg_type) {
++    case __va_gen_reg:
++        if (ap->gp_offset + size <= 48) {
++            ap->gp_offset += size;
++            return ap->reg_save_area + ap->gp_offset - size;
++        }
++        goto use_overflow_area;
++
++    case __va_float_reg:
++        if (ap->fp_offset < 128 + 48) {
++            ap->fp_offset += 16;
++            return ap->reg_save_area + ap->fp_offset - 16;
++        }
++        size = 8;
++        goto use_overflow_area;
++
++    case __va_stack:
++    use_overflow_area:
++        ap->overflow_arg_area += size;
++        ap->overflow_arg_area = (char*)((long long)(ap->overflow_arg_area + align - 1) & -align);
++        return ap->overflow_arg_area - size;
++
++    default: /* should never happen */
++        abort();
++    }
++    return 0;
++}

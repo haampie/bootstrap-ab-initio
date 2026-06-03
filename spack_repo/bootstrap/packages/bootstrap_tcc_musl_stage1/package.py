@@ -11,30 +11,31 @@ from spack_repo.builtin.build_systems.generic import Package
 from spack.package import *
 
 
-class BootstrapTccMusl(Package):
-    """tcc 0.9.26 linked against bootstrap-musl-boot -- THE working compiler that
-    builds binutils, gmp/mpfr/mpc and GCC stage 0.
+class BootstrapTccMuslStage1(Package):
+    """tcc 0.9.26 linked against the (broken) scaffold musl -- the INTERMEDIATE
+    compiler whose only job is to build a correct bootstrap-musl-boot.
 
-    Same tcc 0.9.26 source as bootstrap-tcc-musl-stage1, but built by that stage1
-    tcc and linked against bootstrap-musl-boot (a musl whose printf is correct)
-    instead of the tcc-mes-built scaffold musl. Crucially, its baked CONFIG_*
-    paths (CRTPREFIX / LIBPATHS / SYSINCLUDEPATHS) point at bootstrap-musl-boot,
-    so every program it later compiles -- which auto-link crt/libc from those
-    paths -- gets the correct libc. This is what removes the scaffold's
-    NUL-corrupted ``%016lx`` (which broke ``nm | grep``) and broken ``%f`` from
-    the whole toolchain. See the bootstrap-scaffold-musl-printf-broken memory.
+    Same tcc 0.9.26 source as bootstrap-tcc-mes, but compiled by the seed tcc
+    (tcc-mes) and linked against bootstrap-musl-scaffold instead of mes libc.
+    Scaffold musl's strtod is correct, so this compiler rounds FP literals
+    properly (unlike the mes-libc seed) and its x86_64 codegen is sound -- but
+    scaffold musl's *printf* is miscompiled by tcc-mes (NUL-corrupted ``%016lx``
+    and ``%f`` -> 0.0), so anything this stage's binary itself prints is garbage.
+    That does not matter: it only ever compiles bootstrap-musl-boot (a correct
+    musl), and the final bootstrap-tcc-musl is rebuilt against THAT. It self-hosts
+    in three stages and the fixed point (stage2 == stage3 byte-identical) is
+    asserted. See the bootstrap-scaffold-musl-printf-broken memory.
 
     Ported from MES-replacement/steps/03-tcc-musl/ (+ musl-1.1.24/log.md).
 
     THE critical flag is ``-DHAVE_FLOAT=1``: the bootstrappable 0.9.26 fork wraps
     all floating-point handling in ``#if HAVE_FLOAT``; without it every
     float/double literal compiles to 0.0 and silently miscompiles GCC's cc1
-    downstream. It self-hosts in three stages and the fixed point
-    (stage2 == stage3 byte-identical) is asserted. No ``c`` virtual dependency."""
+    downstream. No ``c`` virtual dependency."""
 
     homepage = "https://www.iwriteiam.nl/MES-replacement.html"
 
-    # Same bootstrappable TCC 0.9.26 snapshot as bootstrap-tcc-musl-stage1.
+    # Same bootstrappable TCC 0.9.26 snapshot as bootstrap-tcc-mes.
     version(
         "0.9.26",
         sha256="6b8cbd0a5fed0636d4f0f763a603247bc1935e206e1cc5bda6a2818bab6e819f",
@@ -44,19 +45,17 @@ class BootstrapTccMusl(Package):
     conflicts("platform=darwin")
     conflicts("platform=windows")
 
-    depends_on("bootstrap-tcc-musl-stage1", type="build")
-    # The libc this tcc links AND bakes into CONFIG_*; consumers reach it through
-    # this tcc's baked absolute paths, so carry it at runtime too.
-    depends_on("bootstrap-musl-boot", type=("build", "run"))
+    depends_on("bootstrap-tcc-mes", type="build")
+    depends_on("bootstrap-musl-scaffold", type="build")
 
-    # Same amd64 tcc source fixes as the seed/stage1 tcc (applied pre-sandbox).
+    # Same amd64 tcc source fixes as bootstrap-tcc-mes (applied pre-sandbox).
     patch("tcc-static-plt.patch")
     patch("tcc-va-list.patch")
 
     def install(self, spec, prefix):
         src = self.stage.source_path
-        seed = join_path(spec["bootstrap-tcc-musl-stage1"].prefix, "bin", "tcc")
-        musl = spec["bootstrap-musl-boot"].prefix
+        seed = join_path(spec["bootstrap-tcc-mes"].prefix, "bin", "tcc")
+        musl = spec["bootstrap-musl-scaffold"].prefix
         musllib = join_path(musl, "lib")
         muslinc = join_path(musl, "include")
 
@@ -71,10 +70,15 @@ class BootstrapTccMusl(Package):
         # tcc.h:25 does #include "config.h"; all config comes via -D below.
         open(join_path(src, "config.h"), "w").close()
 
-        # libtcc1.a (compiler runtime helpers), built by the stage1 tcc.
-        # MUST include alloca86_64.S: tcc maps __builtin_alloca -> the *symbol*
-        # alloca (lib/alloca86_64.S); musl has none, so without it every
-        # alloca-using program tcc links gets "undefined symbol alloca".
+        # libtcc1.a (compiler runtime helpers), built by the seed tcc.
+        # MUST include alloca86_64.S: tcc does NOT inline alloca -- libtcc.c maps
+        # __builtin_alloca -> the *symbol* alloca, which lives in lib/alloca86_64.S.
+        # Unlike mes libc (which ships its own `alloca`), musl has none (it relies
+        # on the compiler builtin), so without this every alloca-using program
+        # tcc-musl links (make, binutils, gcc) gets "undefined symbol alloca",
+        # and their configure falls back to gnulib's C_ALLOCA path. Archive
+        # members are pulled only when referenced, so tcc.c's own self-host
+        # (no alloca) and the stage2==stage3 fixpoint are unaffected.
         libtcc1 = join_path(tccdir, "libtcc1.a")
         with working_dir(src):
             Executable(seed)(
@@ -110,7 +114,7 @@ class BootstrapTccMusl(Package):
             ]
 
         def build_stage(cc, out):
-            # Fully explicit static link against bootstrap-musl-boot crt + libc.
+            # Fully explicit static link against scaffold musl crt + libc.
             with working_dir(src):
                 Executable(cc)(
                     "-g", "-static", "-nostdlib", "-nostdinc",

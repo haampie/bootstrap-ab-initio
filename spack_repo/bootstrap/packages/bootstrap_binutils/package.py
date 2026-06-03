@@ -2,9 +2,6 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
-import os
-import re
-
 from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
@@ -38,26 +35,48 @@ class BootstrapBinutils(Package):
     conflicts("platform=windows")
 
     depends_on("bootstrap-tcc-musl", type="build")
-    depends_on("bootstrap-musl-scaffold", type="build")
-    depends_on("bootstrap-gmake-mes", type="build")
+    depends_on("bootstrap-musl-boot", type="build")
+    depends_on("bootstrap-gmake", type="build")
 
-    #: build tool providing ``make``
-    make_provider = "bootstrap-gmake-mes"
+    #: build tool providing ``make``. bootstrap-gmake (musl-linked, real
+    #: sigaction) -- NOT gmake-mes -- so this heavy stage parallelizes via
+    #: Spack's jobserver without the gmake-mes deadlock. No MAKEFLAGS clearing.
+    make_provider = "bootstrap-gmake"
 
     def setup_build_environment(self, env):
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
+        # No host flex/bison (this chain treats them as host tools, but they may
+        # be absent -- and binutils 2.30 SHIPS the generated parsers, ldgram.c /
+        # ldlex.c / arlex.c / ..., used as-is since maintainer-mode is off). The
+        # only obstacle is AC_PROG_LEX, which fatally runs $LEX ("cannot find
+        # output from <flex>; giving up") -- but that check is skipped when
+        # ``ac_cv_prog_lex_root`` is already set. Export it so EVERY configure
+        # (top + recursive configure-binutils/gas/ld) short-circuits and uses
+        # the shipped .c. This also sets LEX_OUTPUT_ROOT=lex.yy in the Makefiles,
+        # so no post-configure sed is needed. (binutils-mesboot0 needed no flex
+        # either; cf. commencement.scm using flex/bison as inputs only.)
+        env.set("ac_cv_prog_lex_root", "lex.yy")
+
+        # libtool's runtime probe misdetects max_cmd_len=512 in this env, so for
+        # libbfd (~50 objects) it falls back to "piecewise archive linking" --
+        # several ``$AR rc libbfd.a <batch>`` calls. But tcc's ``-ar`` RECREATES
+        # the archive each call (tcctools.c fopen(lib,"wb"); no append), so only
+        # the LAST batch survives -> libbfd.a loses archive.o/bfd.o/init.o and
+        # gas's as-new link fails with "undefined symbol bfd_init/bfd_scan_vma".
+        # Export the libtool cache var (skips the probe in every sub-configure)
+        # so each archive is built in ONE ar call. 128K is far under ARG_MAX
+        # (~3.2M) and dwarfs any archive command here. Needed by gcc-stage0 too.
+        env.set("lt_cv_sys_max_cmd_len", "131072")
 
     def install(self, spec, prefix):
         sh = Executable("/bin/sh")
         make = Executable(spec[self.make_provider].prefix.bin.make)
         tcc = join_path(spec["bootstrap-tcc-musl"].prefix, "bin", "tcc")
-        musllib = join_path(spec["bootstrap-musl-scaffold"].prefix, "lib")
+        musllib = join_path(spec["bootstrap-musl-boot"].prefix, "lib")
 
         # tcc-musl already has the scaffold-musl crt/headers/libc baked into its
         # CONFIG_* paths, so it works as a self-contained "cc". The extra -L is
         # belt-and-suspenders. ar/ranlib are tcc's own; MAKEINFO=true avoids texi.
-        host_tools = ["LEX=/usr/bin/flex", "YACC=/usr/bin/bison -y", "M4=/usr/bin/m4"]
+        # M4 from the host (present); flex/bison are not needed (shipped parsers).
         sh(
             "configure",
             "CC=%s -L%s" % (tcc, musllib),
@@ -65,13 +84,20 @@ class BootstrapBinutils(Package):
             "AR=%s -ar" % tcc,
             "RANLIB=true",
             "MAKEINFO=true",
-            *host_tools,
             "CFLAGS=-g",
             "--build=x86_64-linux-musl",
             "--host=x86_64-linux-musl",
             "--target=x86_64-linux-musl",
             "--prefix=" + prefix,
             "--with-sysroot=/",
+            # ld/ generates its emulation sources via a recursive `make
+            # run-genscripts`, which -includes .deps/*.Po. automake doesn't know
+            # tcc's depmode, so the .Po placeholders aren't created, and under
+            # parallel make the sub-make can run before the main compile creates
+            # them -> "No rule to make target '.deps/ldlang.Po'". Dependency
+            # tracking is useless for a one-shot build; disabling it drops the
+            # .Po include entirely and makes the parallel build deterministic.
+            "--disable-dependency-tracking",
             "--enable-64-bit-bfd",
             "--disable-nls",
             "--enable-static",
@@ -81,23 +107,8 @@ class BootstrapBinutils(Package):
             "--enable-deterministic-archives",
         )
 
-        # autoconf's AC_PROG_LEX leaves LEX_OUTPUT_ROOT='' in every sub-Makefile
-        # in this environment; a command-line override is reset by the recursive
-        # sub-make, so patch the Makefiles directly (cf. steps/04 build.sh).
-        pat = re.compile(r"^LEX_OUTPUT_ROOT = $", re.M)
-        for root, _dirs, files in os.walk(self.stage.source_path):
-            if "Makefile" in files:
-                mk = join_path(root, "Makefile")
-                with open(mk) as f:
-                    text = f.read()
-                if pat.search(text):
-                    with open(mk, "w") as f:
-                        f.write(pat.sub("LEX_OUTPUT_ROOT = lex.yy", text))
-
-        build_tools = ["MAKEINFO=true", "M4=/usr/bin/m4", "BISON=/usr/bin/bison",
-                       "YACC=/usr/bin/bison -y", "FLEX=/usr/bin/flex", "LEX=/usr/bin/flex"]
-        make("-j1", *build_tools)
-        make("install", *build_tools)
+        make("MAKEINFO=true", "M4=/usr/bin/m4")
+        make("install", "MAKEINFO=true", "M4=/usr/bin/m4")
 
     def setup_dependent_build_environment(self, env, dependent_spec):
         env.prepend_path("PATH", self.prefix.bin)

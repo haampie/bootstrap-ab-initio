@@ -118,12 +118,23 @@ class BootstrapMuslScaffold(Package):
         # Kernel uapi headers come in via -I (tcc doesn't honor C_INCLUDE_PATH).
         cflags = "-DSYSCALL_NO_TLS -I" + join_path(kheaders, "include")
         ar = cc + " -ar"
-        make("-j1", "CC=" + cc, "AR=" + ar, "RANLIB=true", "CFLAGS=" + cflags)
+        make("CC=" + cc, "AR=" + ar, "RANLIB=true", "CFLAGS=" + cflags)
         make("install", "CC=" + cc, "AR=" + ar, "RANLIB=true")
 
         # Sanity: the static libc + startfiles landed.
         for f in ("lib/libc.a", "lib/crt1.o", "lib/crti.o", "lib/crtn.o"):
             assert os.path.exists(join_path(prefix, f)), "missing " + f
+
+    def setup_build_environment(self, env):
+        # Drop Spack's inherited jobserver. gmake-mes' seed MES libc ships a
+        # *stub* sigaction (lib/stub/sigaction.c: `return 0`, no syscall), so
+        # make never installs its SIGCHLD handler -- its blocking jobserver
+        # read() is never EINTR'd by a finished child and it deadlocks under
+        # -jN (children pile up as zombies). Clearing MAKEFLAGS keeps every
+        # gmake-mes build serial and safe until a musl-linked make (real
+        # sigaction) exists. See TODO.md and the gmake-mes-sigaction memory.
+        env.set("MAKEFLAGS", "")
+        env.set("MFLAGS", "")
 
     def setup_dependent_build_environment(self, env, dependent_spec):
         # tcc-musl + gmp/mpfr/mpc + gcc link/compile against this libc.

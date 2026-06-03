@@ -39,11 +39,6 @@ class BootstrapGmakeMes(Package):
 
     depends_on("bootstrap-tcc-mes", type="build")
 
-    def setup_build_environment(self, env):
-        # build.sh doesn't use a jobserver; clear Spack's inherited flags.
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
-
     def install(self, spec, prefix):
         tcc = spec["bootstrap-tcc-mes"].prefix
         libmes = join_path(tcc, "lib", "mes")
@@ -102,5 +97,3 @@ class BootstrapGmakeMes(Package):
         # version-sniffing configure scripts often look for "gmake" first.
         symlink("make", join_path(prefix.bin, "gmake"))
 
-    def setup_dependent_build_environment(self, env, dependent_spec):
-        env.prepend_path("PATH", self.prefix.bin)

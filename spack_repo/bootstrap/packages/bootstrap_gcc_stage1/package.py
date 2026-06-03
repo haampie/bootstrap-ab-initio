@@ -2,6 +2,8 @@
 #
 # SPDX-License-Identifier: (Apache-2.0 OR MIT)
 
+import os
+
 from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
@@ -37,11 +39,26 @@ class BootstrapGccStage1(Package):
     depends_on("bootstrap-gcc-stage0", type="build")  # C-only host compiler
     depends_on("bootstrap-musl", type=("build", "run"))  # pristine sysroot libc
     depends_on("bootstrap-binutils", type=("build", "run"))
-    depends_on("bootstrap-gmp", type="build")
-    depends_on("bootstrap-mpfr", type="build")
-    depends_on("bootstrap-mpc", type="build")
-    depends_on("bootstrap-gmake-mes", type="build")
+    depends_on("bootstrap-gmake", type="build")
     depends_on("bootstrap-linux-headers", type="build")
+
+    # gmp/mpfr/mpc are built IN-TREE (Guix's unpack-gmp&co): their *sources* are
+    # unpacked into the GCC tree as gmp/ mpfr/ mpc/, so gcc-stage0 (a real GCC
+    # driving real binutils `as`) compiles them as part of this build. The
+    # standalone bootstrap-gmp/mpfr/mpc packages are tcc-built and carry tcc
+    # runtime symbols (alloca/__va_start/__va_arg/__floatundidf live in libtcc1);
+    # a real GCC linking against them fails the configure link test ("correct
+    # version of the gmp/mpfr/mpc libraries... no"). In-tree sidesteps that AND
+    # the version/link check (configure uses the in-tree dirs when they exist).
+    resource(name="gmp", placement="gmp",
+             url="https://ftpmirror.gnu.org/gmp/gmp-4.3.2.tar.gz",
+             sha256="7be3ad1641b99b17f6a8be6a976f1f954e997c41e919ad7e0c418fe848c13c97")
+    resource(name="mpfr", placement="mpfr",
+             url="https://ftpmirror.gnu.org/mpfr/mpfr-2.4.2.tar.gz",
+             sha256="246d7e184048b1fc48d3696dd302c9774e24e921204221540745e5464022b637")
+    resource(name="mpc", placement="mpc",
+             url="https://ftpmirror.gnu.org/mpc/mpc-1.0.3.tar.gz",
+             sha256="617decc6ea09889fb08ede330917a00b16809b8db88c29c31bfbb49cbf88ecc3")
 
     patch("0001-alloca.patch")
     patch("0002-strsignal.patch")
@@ -49,11 +66,9 @@ class BootstrapGccStage1(Package):
     patch("0004-libstdcxx-generic-ctype.patch")
 
     #: build tool providing ``make``
-    make_provider = "bootstrap-gmake-mes"
+    make_provider = "bootstrap-gmake"
 
-    def setup_build_environment(self, env):
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
+
 
     def configure_args(self, spec, prefix):
         gcc = join_path(spec["bootstrap-gcc-stage0"].prefix, "bin", "gcc")
@@ -73,9 +88,8 @@ class BootstrapGccStage1(Package):
             "--target=x86_64-unknown-linux-musl",
             "--with-sysroot=" + str(sysroot),
             "--with-native-system-header-dir=/include",
-            "--with-gmp=" + str(spec["bootstrap-gmp"].prefix),
-            "--with-mpfr=" + str(spec["bootstrap-mpfr"].prefix),
-            "--with-mpc=" + str(spec["bootstrap-mpc"].prefix),
+            # NO --with-gmp/--with-mpfr/--with-mpc: the in-tree gmp/ mpfr/ mpc/
+            # dirs are auto-detected and built as part of GCC.
             "--enable-languages=c,c++",
             "--enable-static",
             "--disable-shared",
@@ -103,6 +117,21 @@ class BootstrapGccStage1(Package):
     def install(self, spec, prefix):
         sh = Executable("/bin/sh")
         make = Executable(spec[self.make_provider].prefix.bin.make)
+        # Guix's setenv: let the in-tree mpfr.h (mpfr/src) be found while GCC and
+        # libstdc++ compile, before the in-tree mpfr is installed into the build.
+        os.environ["C_INCLUDE_PATH"] = os.pathsep.join(
+            filter(None, [join_path(self.stage.source_path, "mpfr", "src"),
+                          os.environ.get("C_INCLUDE_PATH", "")])
+        )
+        # gmp-4.3.2/mpfr-2.4.2/mpc-1.0.3 ship pre-2014 config.sub/config.guess
+        # that don't know the `musl` OS, so their in-tree configure dies on
+        # `x86_64-unknown-linux-musl`. GCC 4.7's own top-level pair (2012) does
+        # accept it, so overwrite the bundled ones (gmp's config.sub is a wrapper
+        # around configfsf.sub; replacing it with GCC's plain version is fine).
+        src = self.stage.source_path
+        for sub in ("gmp", "mpfr", "mpc"):
+            for f in ("config.sub", "config.guess"):
+                copy(join_path(src, f), join_path(src, sub, f))
         build = join_path(self.stage.source_path, "build")
         mkdirp(build)
         with working_dir(build):

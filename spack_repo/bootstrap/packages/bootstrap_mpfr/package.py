@@ -23,26 +23,26 @@ class BootstrapMpfr(Package):
     conflicts("platform=windows")
 
     depends_on("bootstrap-tcc-musl", type="build")
-    depends_on("bootstrap-musl-scaffold", type="build")
+    depends_on("bootstrap-musl-boot", type="build")
     depends_on("bootstrap-binutils", type="build")
     depends_on("bootstrap-gmp", type="build")
-    depends_on("bootstrap-gmake-mes", type="build")
+    depends_on("bootstrap-gmake", type="build")
 
     #: build tool providing ``make``
-    make_provider = "bootstrap-gmake-mes"
+    make_provider = "bootstrap-gmake"
 
-    def setup_build_environment(self, env):
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
+
 
     def configure_args(self, spec, prefix):
         tcc = join_path(spec["bootstrap-tcc-musl"].prefix, "bin", "tcc")
-        musllib = join_path(spec["bootstrap-musl-scaffold"].prefix, "lib")
+        musllib = join_path(spec["bootstrap-musl-boot"].prefix, "lib")
         return [
             "CC=%s -L%s" % (tcc, musllib),
             "CFLAGS=-DHAVE_ALLOCA_H",
-            "--build=x86_64-linux-musl",
-            "--host=x86_64-linux-musl",
+            # MPFR 2.4.2's config.sub predates musl; the triplet is cosmetic
+            # for this pure math lib, so use one the old config.sub recognizes.
+            "--build=x86_64-unknown-linux-gnu",
+            "--host=x86_64-unknown-linux-gnu",
             "--prefix=" + prefix,
             "--with-gmp=" + str(spec["bootstrap-gmp"].prefix),
             "--enable-static",
@@ -53,7 +53,7 @@ class BootstrapMpfr(Package):
         sh = Executable("/bin/sh")
         make = Executable(spec[self.make_provider].prefix.bin.make)
         sh("configure", *self.configure_args(spec, prefix))
-        make("-j1")
+        make()
         make("install")
 
     def setup_dependent_build_environment(self, env, dependent_spec):

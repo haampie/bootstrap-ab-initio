@@ -32,15 +32,11 @@ class BootstrapMusl(Package):
 
     depends_on("bootstrap-gcc-stage0", type="build")
     depends_on("bootstrap-binutils", type=("build", "run"))
-    depends_on("bootstrap-gmake-mes", type="build")
+    depends_on("bootstrap-gmake", type="build")
     depends_on("bootstrap-linux-headers", type="build")
 
     #: build tool providing ``make``
-    make_provider = "bootstrap-gmake-mes"
-
-    def setup_build_environment(self, env):
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
+    make_provider = "bootstrap-gmake"
 
     def install(self, spec, prefix):
         sh = Executable("/bin/sh")
@@ -69,7 +65,7 @@ class BootstrapMusl(Package):
         # NOTE: x86_64 starts without -fno-tree-ccp (that was an AArch64 CCP
         # backend bug on musl's aio.c). Add CFLAGS=-fno-tree-ccp reactively if
         # cc1 segfaults.
-        make("-j1", "AR=" + ar, "RANLIB=" + ranlib)
+        make("AR=" + ar, "RANLIB=" + ranlib)
         make("install", "AR=" + ar, "RANLIB=" + ranlib)
 
         for f in ("lib/libc.a", "lib/crt1.o"):

@@ -28,27 +28,30 @@ class BootstrapGmp(Package):
     conflicts("platform=windows")
 
     depends_on("bootstrap-tcc-musl", type="build")
-    depends_on("bootstrap-musl-scaffold", type="build")
+    depends_on("bootstrap-musl-boot", type="build")
     depends_on("bootstrap-binutils", type="build")
-    depends_on("bootstrap-gmake-mes", type="build")
+    depends_on("bootstrap-gmake", type="build")
 
     #: build tool providing ``make``
-    make_provider = "bootstrap-gmake-mes"
+    make_provider = "bootstrap-gmake"
 
-    def setup_build_environment(self, env):
-        env.set("MAKEFLAGS", "")
-        env.set("MFLAGS", "")
+
 
     def configure_args(self, spec, prefix):
         tcc = join_path(spec["bootstrap-tcc-musl"].prefix, "bin", "tcc")
-        musllib = join_path(spec["bootstrap-musl-scaffold"].prefix, "lib")
+        musllib = join_path(spec["bootstrap-musl-boot"].prefix, "lib")
         return [
             "CC=%s -L%s" % (tcc, musllib),
             "CFLAGS=-DHAVE_ALLOCA_H",
-            "--build=x86_64-linux-musl",
-            "--host=x86_64-linux-musl",
+            # Force the generic C mpn (no asm) via the "none" CPU. GMP 4.3.2
+            # predates --disable-assembly (added in GMP 5.0), so that flag is
+            # silently ignored; with a real x86_64 host GMP picks its hand-written
+            # mpn asm, which tcc's assembler can't handle (e.g. `movabsq`). A CPU
+            # of "none" is unrecognized by configure's CPU case -> generic C only.
+            # The triple also dodges the musl-unaware 2010 config.sub.
+            "--build=none-unknown-linux-gnu",
+            "--host=none-unknown-linux-gnu",
             "--prefix=" + prefix,
-            "--disable-assembly",
             "--enable-static",
             "--disable-shared",
         ]
@@ -57,7 +60,7 @@ class BootstrapGmp(Package):
         sh = Executable("/bin/sh")
         make = Executable(spec[self.make_provider].prefix.bin.make)
         sh("configure", *self.configure_args(spec, prefix))
-        make("-j1")
+        make()
         make("install")
 
     def setup_dependent_build_environment(self, env, dependent_spec):
