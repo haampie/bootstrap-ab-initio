@@ -428,8 +428,8 @@ class BootstrapTccMes(Package):
     # GitHub release URL once stable.
     resource(
         name="seeds",
-        sha256="0de6d1f05c66dbe233f82d0a1ef7f79c77b05af781b5fbdbf077d9976eb5bdd7",
         url="https://github.com/haampie/MES-replacement/releases/download/wip/tcc-mes-seeds.tar.gz",
+        sha256="f624dfaa8f11b10e7362840207c9bf415da7a094d11c207a0fc07311780d605d",
         destination="",
         placement="seeds",
     )
