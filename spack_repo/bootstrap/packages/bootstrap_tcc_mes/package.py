@@ -403,7 +403,7 @@ class BootstrapTccMes(Package):
     version(
         "0.9.26",
         sha256="6b8cbd0a5fed0636d4f0f763a603247bc1935e206e1cc5bda6a2818bab6e819f",
-        url="file:///home/harmenstoppels.linux/MES-replacement/distfiles/tcc-0.9.26.tar.gz",
+        url="https://lilypond.org/janneke/tcc/tcc-0.9.26-1147-gee75a10c.tar.gz",
     )
 
     # GNU Mes supplies the C library (headers + sources) tcc links against.
