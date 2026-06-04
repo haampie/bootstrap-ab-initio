@@ -71,6 +71,7 @@ class BootstrapTccMusl(Package):
     # Same per-arch tcc source fixes as the seed/stage1 tcc (applied pre-sandbox).
     patch("tcc-static-plt.patch", when="target=x86_64:")
     patch("tcc-va-list.patch", when="target=x86_64:")
+    patch("tcc-x86_64-mxcsr.patch", when="target=x86_64:")  # tcc: add ldmxcsr/stmxcsr SSE opcodes
     patch("tcc-arm64-01-asm-wiring.patch", when="target=aarch64:")
     patch("tcc-arm64-02-codegen.patch", when="target=aarch64:")
     patch("tcc-arm64-03-varargs.patch", when="target=aarch64:")

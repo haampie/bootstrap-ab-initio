@@ -442,6 +442,7 @@ class BootstrapTccMes(Package):
     # applied by Spack *before* the sandbox.
     patch("tcc-static-plt.patch", when="target=x86_64:")  # tcc: relocate static-exec PLT stubs
     patch("tcc-va-list.patch", when="target=x86_64:")  # tcc: SysV AMD64 va_list, single def
+    patch("tcc-x86_64-mxcsr.patch", when="target=x86_64:")  # tcc: add ldmxcsr/stmxcsr SSE opcodes
 
     # AArch64 source fixes: tcc 0.9.26 has no arm64 assembler and the seed
     # tcc_cc miscompiles a few constructs.  These are real unified diffs derived

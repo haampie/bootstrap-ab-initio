@@ -88,7 +88,6 @@ class BootstrapMuslScaffold(Package):
     # x86_64-only patches.
     patch("0002-sigsetjmp-x86_64-plt.patch", when="target=x86_64:")
     patch("0030-syscall-x86_64.patch", when="target=x86_64:")
-    patch("0031-fenv.patch", when="target=x86_64:")
     patch("0040-x86_64-sysv-va_list.patch", when="target=x86_64:")
 
     # aarch64-only patches (concern-grouped; see module docstring).

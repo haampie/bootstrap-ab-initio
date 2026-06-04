@@ -1,0 +1,23 @@
+Teach tcc's x86_64 inline assembler the ldmxcsr/stmxcsr SSE opcodes.
+
+They live in the same 0x0fae ModRM opcode group as fxsave (/0) and fxrstor (/1),
+which tcc already knows; ldmxcsr is /2 and stmxcsr is /3.  With these two entries
+musl's pristine src/fenv/x86_64/fenv.s assembles via plain mnemonics, so it needs
+no .byte hand-encoding.  Upstreamable; independent of any tcc bump.
+
+Note: the x86_64 build compiles x86_64-asm.h (i386-asm.c includes it under
+#ifdef TCC_TARGET_X86_64), not i386-asm.h.
+
+diff --git a/x86_64-asm.h b/x86_64-asm.h
+index cb9eb16..fcfd35f 100644
+--- a/x86_64-asm.h
++++ b/x86_64-asm.h
+@@ -350,6 +350,8 @@ ALT(DEF_ASM_OP1(fstsw, 0xdd, 7, OPC_MODRM | OPC_FWAIT, OPT_EA ))
+     DEF_ASM_OP1(ffreep, 0xdfc0, 4, OPC_REG, OPT_ST )
+     DEF_ASM_OP1(fxsave, 0x0fae, 0, OPC_MODRM, OPT_EA )
+     DEF_ASM_OP1(fxrstor, 0x0fae, 1, OPC_MODRM, OPT_EA )
++    DEF_ASM_OP1(ldmxcsr, 0x0fae, 2, OPC_MODRM, OPT_EA )
++    DEF_ASM_OP1(stmxcsr, 0x0fae, 3, OPC_MODRM, OPT_EA )
+     /* The *q forms of fxrstor/fxsave use a REX prefix.
+        If the operand would use extended registers we would have to modify
+        it instead of generating a second one.  Currently that's no
