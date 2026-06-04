@@ -43,13 +43,14 @@ class BootstrapLibstdcxxBoot1(Package):
 
     def configure_flags(self, spec, prefix):
         gcc = spec["bootstrap-gcc-boot0-wrapped"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
         return [
             "CONFIG_SHELL=/bin/sh",
             "CC={0}/bin/gcc".format(gcc),
             "CXX={0}/bin/g++".format(gcc),
             "MAKEINFO=true",
-            "--build=x86_64-linux-gnu",
-            "--host=x86_64-linux-gnu",
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
             "--prefix={0}".format(prefix),
             "--disable-multilib",
             "--disable-nls",
@@ -87,6 +88,7 @@ class BootstrapLibstdcxxBoot1(Package):
         # providers append) -- libstdc++'s <cstdlib> #include_next <stdlib.h>
         # must reach glibc's copy. bits/c++config.h lives in an arch subdir.
         env.prepend_path("CPLUS_INCLUDE_PATH", self.prefix.include)
+        triplet = "%s-linux-gnu" % self.spec.target.family
         env.prepend_path(
-            "CPLUS_INCLUDE_PATH", join_path(self.prefix.include, "x86_64-linux-gnu")
+            "CPLUS_INCLUDE_PATH", join_path(self.prefix.include, triplet)
         )

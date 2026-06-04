@@ -9,7 +9,12 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-X86_64_DYNAMIC_LINKER = "/lib/ld-linux-x86-64.so.2"
+# ELF interpreter basename per arch, relative to glibc's lib/ (glibc installs the
+# loader under lib/ on both arches).
+DYNAMIC_LINKER = {
+    "x86_64": "ld-linux-x86-64.so.2",
+    "aarch64": "ld-linux-aarch64.so.1",
+}
 
 # Binutils tools to symlink from binutils-boot0 into the wrapper bin dir so
 # that configure scripts and Makefiles find plain ``as``, ``ld``, ``ar`` etc.
@@ -56,7 +61,7 @@ class BootstrapGccBoot0Wrapped(Package):
         glibc = spec["bootstrap-glibc-boot0"].prefix
         binutils = spec["bootstrap-binutils-boot0"].prefix
 
-        ld_so = "{0}{1}".format(glibc, X86_64_DYNAMIC_LINKER)
+        ld_so = join_path(glibc, "lib", DYNAMIC_LINKER[str(spec.target.family)])
 
         mkdirp(prefix.bin)
 

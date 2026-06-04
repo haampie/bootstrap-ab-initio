@@ -8,8 +8,6 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-X86_64_TRIPLET = "x86_64-linux-gnu"
-
 
 class BootstrapGlibcBoot0(Package):
     """glibc 2.43 -- the production x86_64 libc, built by the crippled gcc-boot0.
@@ -70,6 +68,7 @@ class BootstrapGlibcBoot0(Package):
         make = Executable(spec[self.make_provider].prefix.bin.make)
 
         cc = join_path(gcc_boot.bin, "gcc")
+        triplet = "%s-linux-gnu" % spec.target.family
 
         configure_flags = [
             "CONFIG_SHELL=/bin/sh",
@@ -80,8 +79,8 @@ class BootstrapGlibcBoot0(Package):
             # Python for gen-as-const and friends; glibc's configure lists
             # 'python' as critic_missing, so point it at our bootstrap python3.
             "PYTHON={0}/bin/python3".format(python),
-            "--build={0}".format(X86_64_TRIPLET),
-            "--host={0}".format(X86_64_TRIPLET),
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
             "--prefix={0}".format(prefix),
             "--with-headers={0}/include".format(headers),
             "--enable-kernel=3.2.0",

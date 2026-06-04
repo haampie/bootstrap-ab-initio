@@ -41,6 +41,14 @@ class BootstrapBison(Package):
     #: build tool providing ``make``
     make_provider = "bootstrap-gmake"
 
+    def setup_build_environment(self, env):
+        # No usable host flex in the sandbox; bison SHIPS its generated scanners
+        # (maintainer-mode off), so flex is never actually needed. AC_PROG_LEX
+        # otherwise runs $LEX and fails its output-file probe ("cannot find
+        # output from flex"). Preseeding ac_cv_prog_lex_root short-circuits it
+        # (same as bootstrap-binutils-boot0 / bootstrap-binutils-final).
+        env.set("ac_cv_prog_lex_root", "lex.yy")
+
     def install(self, spec, prefix):
         gcc = spec["bootstrap-gcc-9"].prefix
         make = Executable(spec[self.make_provider].prefix.bin.make)

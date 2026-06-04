@@ -6,8 +6,6 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-X86_64_TRIPLET = "x86_64-linux-gnu"
-
 
 class BootstrapBinutilsFinal(Package):
     """Native x86_64 binutils 2.46 -- the first glibc-linked binutils.
@@ -46,6 +44,7 @@ class BootstrapBinutilsFinal(Package):
     def configure_flags(self, spec, prefix):
         gcc = spec["bootstrap-gcc-boot0-wrapped"].prefix
         libstdcxx = spec["bootstrap-libstdcxx-boot1"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
         return [
             "CONFIG_SHELL=/bin/sh",
             "CC={0}/bin/gcc".format(gcc),
@@ -65,9 +64,9 @@ class BootstrapBinutilsFinal(Package):
             "OBJDUMP=objdump",
             "READELF=readelf",
             "STRIP=strip",
-            "--build={0}".format(X86_64_TRIPLET),
-            "--host={0}".format(X86_64_TRIPLET),
-            "--target={0}".format(X86_64_TRIPLET),
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
+            "--target={0}".format(triplet),
             "--prefix={0}".format(prefix),
             "--disable-multilib",
             "--disable-werror",

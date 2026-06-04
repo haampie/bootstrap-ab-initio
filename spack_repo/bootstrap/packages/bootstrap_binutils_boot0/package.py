@@ -8,14 +8,13 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-#: Native GNU triplet of the glibc cap. The whole cap is x86_64-linux-gnu
-#: (the predecessor gcc-9.5 is already native; no i686 cross), so build ==
-#: host == target everywhere.
-X86_64_TRIPLET = "x86_64-linux-gnu"
-
 
 class BootstrapBinutilsBoot0(Package):
-    """Binutils 2.46 (native x86_64 as/ld/ar) built by bootstrap-gcc-9.
+    """Binutils 2.46 (native as/ld/ar) built by bootstrap-gcc-9.
+
+    The whole glibc cap is a plain native build (build == host == target ==
+    the host GNU triplet, x86_64-linux-gnu | aarch64-linux-gnu; the predecessor
+    gcc-9.5 is already native, no i686 cross).
 
     First stage of the glibc cap on top of the musl full-source bootstrap.
     Unlike the old i686 ``binutils-boot0`` -- a cross (i686 host, x86_64 target)
@@ -56,6 +55,7 @@ class BootstrapBinutilsBoot0(Package):
 
     def configure_args(self, spec, prefix):
         gcc = spec["bootstrap-gcc-9"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
         return [
             "CONFIG_SHELL=/bin/sh",
             "CC={0}/bin/gcc".format(gcc),
@@ -76,9 +76,9 @@ class BootstrapBinutilsBoot0(Package):
             "OBJDUMP=objdump",
             "READELF=readelf",
             "STRIP=strip",
-            "--build={0}".format(X86_64_TRIPLET),
-            "--host={0}".format(X86_64_TRIPLET),
-            "--target={0}".format(X86_64_TRIPLET),
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
+            "--target={0}".format(triplet),
             "--with-sysroot=/",
             "--prefix={0}".format(prefix),
             "--enable-install-libbfd",
@@ -102,19 +102,19 @@ class BootstrapBinutilsBoot0(Package):
         sh("./configure", *self.configure_args(spec, prefix))
         make()
         make("install")
-        self._add_triplet_symlinks(prefix)
+        self._add_triplet_symlinks(prefix, "%s-linux-gnu" % spec.target.family)
 
-    def _add_triplet_symlinks(self, prefix):
+    def _add_triplet_symlinks(self, prefix, triplet):
         # A NATIVE build (build==host==target) installs only PLAIN tool names
         # (``ar``, ``as``, ``ld``, ...). But every downstream configure that
-        # passes --host=x86_64-linux-gnu makes AC_CHECK_TOOL look for the
-        # x86_64-linux-gnu-PREFIXED name first -- and the only one on PATH with
-        # that prefix is the landlock-BLOCKED host /usr/bin/x86_64-linux-gnu-ar
+        # passes --host=<triplet> makes AC_CHECK_TOOL look for the
+        # <triplet>-PREFIXED name first -- and the only one on PATH with
+        # that prefix is the landlock-BLOCKED host /usr/bin/<triplet>-ar
         # (Ubuntu's multiarch binutils shares our target triplet), causing
-        # "Permission denied". So add x86_64-linux-gnu-<tool> symlinks pointing
+        # "Permission denied". So add <triplet>-<tool> symlinks pointing
         # at our plain tools; PATH-prepended, they shadow the host's and make
         # the prefixed lookup resolve to us (gcc-boot0/glibc/libstdcxx/gcc-final).
-        triplet_prefix = "{0}-".format(X86_64_TRIPLET)
+        triplet_prefix = "{0}-".format(triplet)
         bindir = prefix.bin
         for name in os.listdir(bindir):
             if name.startswith(triplet_prefix):

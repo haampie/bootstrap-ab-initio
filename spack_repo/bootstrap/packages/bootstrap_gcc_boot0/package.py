@@ -8,8 +8,6 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-X86_64_TRIPLET = "x86_64-linux-gnu"
-
 
 class BootstrapGccBoot0(Package):
     """GCC 16 'crippled' C/C++ compiler (``--without-headers``), built by gcc-9.5.
@@ -23,7 +21,8 @@ class BootstrapGccBoot0(Package):
     and ``bootstrap-gcc-final`` is the real shared compiler.
 
     Unlike the old i686 ``gcc-boot0`` this is NOT a cross: build==host==target
-    ==x86_64-linux-gnu. Differences from that reference:
+    ==the native GNU triplet (x86_64-linux-gnu | aarch64-linux-gnu). Differences
+    from that reference:
 
     * ``--disable-libcc1`` instead of borrowing a separate shared libstdc++:
       gcc-9 only has *static* musl, so a shared libcc1.so (which needs
@@ -72,15 +71,16 @@ class BootstrapGccBoot0(Package):
 
     def configure_flags(self, spec, prefix):
         gcc = spec["bootstrap-gcc-9"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
         return [
             "CONFIG_SHELL=/bin/sh",
             "CC={0}/bin/gcc".format(gcc),
             "CXX={0}/bin/g++".format(gcc),
             "MAKEINFO=true",
             "--prefix={0}".format(prefix),
-            "--build={0}".format(X86_64_TRIPLET),
-            "--host={0}".format(X86_64_TRIPLET),
-            "--target={0}".format(X86_64_TRIPLET),
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
+            "--target={0}".format(triplet),
             # No target libc yet: just enough to compile glibc. No --with-sysroot
             # (a sysroot is where the TARGET libc's usr/include lives; we have
             # none). The old reference gcc-boot0 was a CROSS, where GCC auto-sets
@@ -151,7 +151,8 @@ class BootstrapGccBoot0(Package):
             make("install")
 
         # glibc links against libgcc_eh; provide it (Guix symlink-libgcc_eh).
-        gcc_lib = join_path(prefix.lib, "gcc", X86_64_TRIPLET, str(spec.version))
+        triplet = "%s-linux-gnu" % spec.target.family
+        gcc_lib = join_path(prefix.lib, "gcc", triplet, str(spec.version))
         libgcc = join_path(gcc_lib, "libgcc.a")
         libgcc_eh = join_path(gcc_lib, "libgcc_eh.a")
         if os.path.exists(libgcc) and not os.path.lexists(libgcc_eh):

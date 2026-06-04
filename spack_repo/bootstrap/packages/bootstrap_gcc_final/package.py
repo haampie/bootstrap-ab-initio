@@ -10,7 +10,11 @@ from spack_repo.builtin.build_systems.generic import Package
 
 from spack.package import *
 
-X86_64_TRIPLET = "x86_64-linux-gnu"
+# ELF interpreter basename per arch (glibc installs the loader under lib/).
+DYNAMIC_LINKER = {
+    "x86_64": "ld-linux-x86-64.so.2",
+    "aarch64": "ld-linux-aarch64.so.1",
+}
 
 
 class BootstrapGccFinal(Package):
@@ -69,6 +73,7 @@ class BootstrapGccFinal(Package):
         glibc = spec["bootstrap-glibc-boot0"].prefix
         libstdcxx = spec["bootstrap-libstdcxx-boot1"].prefix
         binutils = spec["bootstrap-binutils-final"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
         return [
             "CONFIG_SHELL=/bin/sh",
             # CC is the relax-wrapper around gcc-boot0-wrapped's gcc (see
@@ -78,14 +83,15 @@ class BootstrapGccFinal(Package):
             "CXX={0}/bin/g++".format(gcc),
             "MAKEINFO=true",
             # libstdcxx-boot1 (static libstdc++.a) for the build tools GCC
-            # compiles (collect2 etc.); lib64 is the x86_64 target libdir.
+            # compiles (collect2 etc.); lib64 is the target libdir on both
+            # x86_64 and aarch64 (lib kept as fallback).
             "LDFLAGS=-L{0}/lib64 -L{0}/lib".format(libstdcxx),
-            "--build={0}".format(X86_64_TRIPLET),
-            "--host={0}".format(X86_64_TRIPLET),
-            "--target={0}".format(X86_64_TRIPLET),
+            "--build={0}".format(triplet),
+            "--host={0}".format(triplet),
+            "--target={0}".format(triplet),
             "--prefix={0}".format(prefix),
             "--with-native-system-header-dir={0}/include".format(glibc),
-            # Use binutils-final's NATIVE x86_64 as/ld and bake them into the
+            # Use binutils-final's NATIVE as/ld and bake them into the
             # installed driver (complements the specs -B<binutils-final>).
             "--with-as={0}/bin/as".format(binutils),
             "--with-ld={0}/bin/ld".format(binutils),
@@ -159,6 +165,8 @@ class BootstrapGccFinal(Package):
         prefix = self.prefix
         glibc = spec["bootstrap-glibc-boot0"].prefix
         binutils = spec["bootstrap-binutils-final"].prefix
+        triplet = "%s-linux-gnu" % spec.target.family
+        ld_so = DYNAMIC_LINKER[str(spec.target.family)]
 
         # Find which directory holds the GCC runtime shared libraries.
         for dir in ["lib64", "lib"]:
@@ -175,7 +183,7 @@ class BootstrapGccFinal(Package):
         gcc_exe = Executable(join_path(prefix.bin, "gcc"))
         builtin_specs = gcc_exe("-dumpspecs", output=str)
 
-        specs_dir = join_path(prefix.lib, "gcc", X86_64_TRIPLET, str(spec.version))
+        specs_dir = join_path(prefix.lib, "gcc", triplet, str(spec.version))
         mkdirp(specs_dir)
         with open(join_path(specs_dir, "specs"), "w") as f:
             # Exactly ONE blank line before the comment: GCC's specs parser
@@ -186,7 +194,7 @@ class BootstrapGccFinal(Package):
             f.write(
                 f"*link:\n"
                 f"+ %{{!static:%{{!static-pie:"
-                f"--dynamic-linker {glibc}/lib/ld-linux-x86-64.so.2}}}}\n\n"
+                f"--dynamic-linker {glibc}/lib/{ld_so}}}}}\n\n"
             )
             f.write(
                 f"*link_libgcc:\n"
