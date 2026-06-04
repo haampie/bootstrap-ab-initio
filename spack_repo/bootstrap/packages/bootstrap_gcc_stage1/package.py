@@ -18,9 +18,9 @@ class BootstrapGccStage1(Package):
     probe is just pointed at stage0's gcc as a C compiler so the forbidden system
     /lib/cpp is never touched.
 
-    Ported from MES-replacement/steps/07-gcc-4.7-stage2/. Source patches: 0001
-    alloca, 0002 strsignal const-qualify, 0003 libstdc++ __GLIBC_PREREQ guard,
-    0004 libstdc++ generic (musl) ctype. No ``c`` virtual dependency."""
+    Source patches: 0001 alloca, 0002 strsignal const-qualify, 0003 libstdc++
+    __GLIBC_PREREQ guard, 0004 libstdc++ generic (musl) ctype. No ``c`` virtual
+    dependency."""
 
     homepage = "https://gcc.gnu.org/"
     url = (
@@ -42,7 +42,7 @@ class BootstrapGccStage1(Package):
     depends_on("bootstrap-gmake", type="build")
     depends_on("bootstrap-linux-headers", type="build")
 
-    # gmp/mpfr/mpc are built IN-TREE (Guix's unpack-gmp&co): their *sources* are
+    # gmp/mpfr/mpc are built IN-TREE: their *sources* are
     # unpacked into the GCC tree as gmp/ mpfr/ mpc/, so gcc-stage0 (a real GCC
     # driving real binutils `as`) compiles them as part of this build. The
     # standalone bootstrap-gmp/mpfr/mpc packages are tcc-built and carry tcc
@@ -118,7 +118,7 @@ class BootstrapGccStage1(Package):
     def install(self, spec, prefix):
         sh = Executable("/bin/sh")
         make = Executable(spec[self.make_provider].prefix.bin.make)
-        # Guix's setenv: let the in-tree mpfr.h (mpfr/src) be found while GCC and
+        # Let the in-tree mpfr.h (mpfr/src) be found while GCC and
         # libstdc++ compile, before the in-tree mpfr is installed into the build.
         os.environ["C_INCLUDE_PATH"] = os.pathsep.join(
             filter(None, [join_path(self.stage.source_path, "mpfr", "src"),

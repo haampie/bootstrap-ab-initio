@@ -19,9 +19,7 @@ class BootstrapBison(Package):
 
     Native x86_64 build (no i686 cross, no ``-g0``); make is bootstrap-gmake.
     Tests are skipped (the suite needs perl and a working flex). No ``c``
-    virtual: compiler wired explicitly to bootstrap-gcc-9.
-
-    Ported from ``bison-boot0`` (Guix ``gnu/packages/commencement.scm``)."""
+    virtual: compiler wired explicitly to bootstrap-gcc-9."""
 
     homepage = "https://www.gnu.org/software/bison/"
     url = "https://ftpmirror.gnu.org/bison/bison-3.8.2.tar.xz"

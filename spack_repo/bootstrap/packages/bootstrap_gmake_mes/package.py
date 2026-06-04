@@ -22,8 +22,7 @@ class BootstrapGmakeMes(Package):
     ``./configure`` (which wires gnulib replacements for the functions mes libc
     lacks) and then make's bundled ``./build.sh`` (compiles make with just the
     shell + CC). The compiler is the seed tcc, driven through a small ``mes-tcc``
-    cc-wrapper that spells out the mes crt/lib locations -- ported from
-    ``MES-replacement/steps/08-gmake-4.4.1/``.
+    cc-wrapper that spells out the mes crt/lib locations.
 
     No ``c`` virtual dependency: the compiler is wired explicitly to tcc-mes."""
 
@@ -46,8 +45,7 @@ class BootstrapGmakeMes(Package):
 
         # cc-wrapper: drive the seed tcc as an ordinary "cc". On a link tcc's
         # mes target needs the crt/libc spelled out under -nostdlib; on -c/-E/-S
-        # just add the mes include/lib dirs. (Ported from steps/08-gmake-4.4.1/
-        # mes-tcc, with tcc-mes's prefix baked in.)
+        # just add the mes include/lib dirs. (tcc-mes's prefix is baked in.)
         mes_tcc = join_path(self.stage.source_path, "mes-tcc")
         with open(mes_tcc, "w") as f:
             f.write(

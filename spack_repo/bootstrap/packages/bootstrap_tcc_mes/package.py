@@ -35,7 +35,7 @@ def _headers(mes_arch):
     return out
 
 
-# --- order-significant lists ported verbatim from pass1.kaem (x86_64 form;
+# --- order-significant compile lists (x86_64 form;
 #     _unified_libc()/_headers() retarget them for aarch64) ---
 UNIFIED_LIBC = [
     "ctype/isalnum.c",
@@ -375,20 +375,17 @@ class BootstrapTccMes(Package):
     """Bootstrappable TCC 0.9.26 (x86_64 or AArch64), grown from a hex0 seed with
     no system compiler.
 
-    This is the first brick of the new full-source bootstrap: it replaces the
-    GNU-Mes-based ``mes-boot`` -> ``tcc-boot0`` -> ``tcc-boot`` stages with the
-    faster ``MES-replacement`` C-compiler (``tcc_cc``).
+    This is the first brick of the full-source bootstrap: a small bootstrappable
+    TCC 0.9.26 C compiler (``tcc_cc``) grown from the hex0 seed, with no system
+    compiler.
 
-    The recipe is a faithful Python port of ``MES-replacement``'s
-    ``target_<arch>/tools-*-kaem.kaem`` (toolchain) and
-    ``steps/tcc-0.9.26/pass1.kaem`` (tcc), which is itself parameterised by
-    ``${ARCH}`` (amd64/arm64). MES-replacement was written for live-bootstrap's
-    pure chroot with zero host tools, so it bootstraps its own ``kaem`` shell,
-    coreutils, ``simple-patch`` and a ``steps`` package manager. Spack already
-    supplies all of that (fetch/checksum/extract/patch) in the parent process, so
-    we discard it and keep only the irreducible core: the hex0 seed plus the
-    compile sequence, driven from Python. No kaem, no chroot, no path relocation
-    -- we use real build/prefix paths.
+    The recipe drives the toolchain and tcc compile sequences in Python,
+    parameterised by ``${ARCH}`` (amd64/arm64). The irreducible core is the hex0
+    seed plus the compile sequence; everything else a from-scratch chroot would
+    have to bootstrap (a shell, coreutils, a patch tool, a package manager) is
+    instead supplied by Spack (fetch/checksum/extract/patch) in the parent
+    process. No kaem, no chroot, no path relocation -- we use real build/prefix
+    paths.
 
     The same recipe builds both targets: it selects the per-arch seed set, TCC
     target macro, mes ``<arch>-mes-gcc`` runtime files and (AArch64 only) the
@@ -396,7 +393,7 @@ class BootstrapTccMes(Package):
 
     Like the rest of the early chain it does *not* ``depends_on("c")``."""
 
-    homepage = "https://www.iwriteiam.nl/MES-replacement.html"
+    homepage = "https://lilypond.org/janneke/tcc/"
 
     # Main source: the bootstrappable TCC 0.9.26 snapshot (Jan Nieuwenhuizen's
     # tree). The version string tracks the tcc we produce.
@@ -421,11 +418,10 @@ class BootstrapTccMes(Package):
         placement="mes",
     )
 
-    # The make-generated seeds (``make -C MES-replacement/src``): per-arch hex0
-    # ELF + the text intermediates that bootstrap hex2/M1/blood-elf/stack_c/
-    # tcc_cc. One combined tarball with ``amd64/`` and ``arm64/`` subdirs (uniform
-    # internal names); install() picks its arch. Local path for now; switch to a
-    # GitHub release URL once stable.
+    # The prebuilt seeds: per-arch hex0 ELF + the text intermediates that
+    # bootstrap hex2/M1/blood-elf/stack_c/tcc_cc. One combined tarball with
+    # ``amd64/`` and ``arm64/`` subdirs (uniform internal names); install() picks
+    # its arch.
     resource(
         name="seeds",
         url="https://github.com/haampie/MES-replacement/releases/download/wip/tcc-mes-seeds.tar.gz",
@@ -438,16 +434,14 @@ class BootstrapTccMes(Package):
     conflicts("platform=darwin")
     conflicts("platform=windows")
 
-    # x86_64 source fixes (ported from MES-replacement's amd64 simple-patches),
-    # applied by Spack *before* the sandbox.
+    # x86_64 source fixes, applied by Spack *before* the sandbox.
     patch("tcc-static-plt.patch", when="target=x86_64:")  # tcc: relocate static-exec PLT stubs
     patch("tcc-va-list.patch", when="target=x86_64:")  # tcc: SysV AMD64 va_list, single def
     patch("tcc-x86_64-mxcsr.patch", when="target=x86_64:")  # tcc: add ldmxcsr/stmxcsr SSE opcodes
 
     # AArch64 source fixes: tcc 0.9.26 has no arm64 assembler and the seed
-    # tcc_cc miscompiles a few constructs.  These are real unified diffs derived
-    # from MES-replacement's arm64 simple-patches, grouped by concern.  The
-    # assembler body itself (``arm64-asm.c``) is dropped in during install()
+    # tcc_cc miscompiles a few constructs.  These are real unified diffs grouped
+    # by concern.  The assembler body itself (``arm64-asm.c``) is dropped in during install()
     # from the seed set; the asm-wiring patch only adds the ``#include``.
     patch("tcc-arm64-01-asm-wiring.patch", when="target=aarch64:")
     patch("tcc-arm64-02-codegen.patch", when="target=aarch64:")
@@ -489,7 +483,7 @@ class BootstrapTccMes(Package):
         # output (-o) and -D values are unaffected. ``seeds`` is ``src/seeds/<m2>``.
         stdlib_c = join_path("seeds", m2, "stdlib.c")
 
-        # Order-significant lists ported from pass1.kaem, retargeted per arch.
+        # Order-significant compile lists, retargeted per arch.
         unified_libc = _unified_libc(mes_arch)
         headers = _headers(mes_arch)
 
@@ -504,7 +498,7 @@ class BootstrapTccMes(Package):
                 with working_dir(cwd):
                     Executable(exe)(*args)
 
-        # ---- Phase 1: grow the bootstrap toolchain (tools-*-kaem.kaem) --------
+        # ---- Phase 1: grow the bootstrap toolchain ----------------------------
         hex0 = join_path(seeds, "hex0-seed")
         chmod_x(hex0)
         hex2 = join_path(tools, "hex2")
@@ -548,7 +542,7 @@ class BootstrapTccMes(Package):
 
         # ---- Phase 2b: tcc_cc compiles tcc.c -> tcc_s -------------------------
         # -D values carrying a C string literal keep their embedded quotes (the
-        # process gets the quotes in argv, exactly as kaem passed them).
+        # process gets the quotes verbatim in argv).
         def tcc_defs(extra=()):
             d = [
                 "-D", "BOOTSTRAP=1",
@@ -606,7 +600,7 @@ class BootstrapTccMes(Package):
 
         inc = ["-I", "include", "-I", "include/linux/%s" % mes_arch]
         # arm64 long double is 128-bit with no hardware quad-float: libtcc1 needs
-        # the lib-arm64.c TFmode soft-float helpers (LINK_LIBARM64 in pass1.kaem).
+        # the lib-arm64.c TFmode soft-float helpers.
         lib_arm64_c = join_path(src, "lib", "lib-arm64.c")
 
         def build_libc(cc):

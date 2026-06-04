@@ -39,8 +39,7 @@ class BootstrapGccBoot0Wrapped(Package):
     Native (not a cross), so the real binary is plain ``bin/gcc`` (gcc-boot0
     also installs an x86_64-linux-gnu-gcc; the plain name always exists). The
     binutils-boot0 tools are symlinked in under their plain names. ``has_code``
-    is False -- this is a pure shim. Mirrors the gcc-boot0-wrapped /
-    gcc-mesboot1-wrapper pattern (Guix ``cross-gcc-wrapper``)."""
+    is False -- this is a pure shim."""
 
     homepage = "https://gcc.gnu.org/"
 

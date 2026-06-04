@@ -11,8 +11,7 @@ class BootstrapBinutils(Package):
     """GNU Binutils 2.30 (as/ld/ar/...), built by tcc-musl against scaffold musl.
 
     The first real assembler/linker of the new chain, used to build gmp/mpfr/mpc
-    and GCC. Ported from MES-replacement/steps/04-binutils-2.30/ (which mirrors
-    Guix's binutils-muslboot0), retargeted x86_64.
+    and GCC.
 
     Carried as ``type=(build,run)`` by the gcc/musl stages so as/ld/ar reach
     their PATH (cf. the bootstrap-toolchain-run-deps memory). No ``c`` virtual.
@@ -23,8 +22,7 @@ class BootstrapBinutils(Package):
     leaks bare ``64,`` tokens into the reloc table, failing with "'}' expected
     (got ',')" at elfnn-aarch64.c:1811). The patch hoists the three TLS-reloc
     name-string choices into plain macros defined once at the top of the file.
-    The other steps-dir AArch64 patch (dropping gas/read.c's wchar.h include) is
-    NOT needed -- musl *has* wchar.h; it was only kept for Guix parallelism.
+    Dropping gas/read.c's wchar.h include is NOT needed -- musl *has* wchar.h.
 
     Host bison/flex/m4 build the generated parsers binutils 2.30 doesn't ship;
     they don't enter the artifact (only the generated .c files do)."""
@@ -61,8 +59,8 @@ class BootstrapBinutils(Package):
         # ``ac_cv_prog_lex_root`` is already set. Export it so EVERY configure
         # (top + recursive configure-binutils/gas/ld) short-circuits and uses
         # the shipped .c. This also sets LEX_OUTPUT_ROOT=lex.yy in the Makefiles,
-        # so no post-configure sed is needed. (binutils-mesboot0 needed no flex
-        # either; cf. commencement.scm using flex/bison as inputs only.)
+        # so no post-configure sed is needed. (No flex is needed either; bison
+        # and flex serve only as build inputs.)
         env.set("ac_cv_prog_lex_root", "lex.yy")
 
         # libtool's runtime probe misdetects max_cmd_len=512 in this env, so for

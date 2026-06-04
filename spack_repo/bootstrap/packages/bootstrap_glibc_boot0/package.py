@@ -25,8 +25,7 @@ class BootstrapGlibcBoot0(Package):
     include dir shadows glibc's own. Needs Python (gen-as-const), bison +
     m4 (intl/plural.c), and make >= 4 (bootstrap-gmake 4.4.1).
 
-    No ``c`` virtual: compiler wired explicitly to gcc-boot0. Ported from
-    ``glibc-boot0`` (Guix glibc-final-with-bootstrap-bash + base.scm glibc)."""
+    No ``c`` virtual: compiler wired explicitly to gcc-boot0."""
 
     homepage = "https://www.gnu.org/software/libc/"
     url = "https://ftpmirror.gnu.org/glibc/glibc-2.43.tar.xz"
@@ -56,8 +55,8 @@ class BootstrapGlibcBoot0(Package):
 
     def setup_build_environment(self, env):
         # Unset inherited include paths so kernel/musl headers don't shadow
-        # glibc's own (Guix: pre-configure phase). bootstrap-gmake handles the
-        # jobserver, so do NOT clear MAKEFLAGS (parallel build).
+        # glibc's own. bootstrap-gmake handles the jobserver, so do NOT clear
+        # MAKEFLAGS (parallel build).
         env.unset("C_INCLUDE_PATH")
         env.unset("CPLUS_INCLUDE_PATH")
 
@@ -90,7 +89,7 @@ class BootstrapGlibcBoot0(Package):
             # NOTE: do NOT pass --disable-multi-arch -- it strips the IFUNC CPU
             # dispatch (tuned memcpy/str*/libmvec) and kills vector-math perf.
             # (multi-arch != multilib; see glibc-multi-arch-ifunc memory.)
-            # Suppress ld.so.cache path rewriting (Guix-ism).
+            # Suppress ld.so.cache path rewriting.
             "--with-default-link=no",
         ]
 
@@ -117,7 +116,7 @@ class BootstrapGlibcBoot0(Package):
         # Downstream stages need glibc's headers and startup files.
         # CPLUS_INCLUDE_PATH is APPENDED so libstdc++ providers (which prepend)
         # stay ahead -- libstdc++'s <cstdlib> #include_next <stdlib.h> must reach
-        # glibc's copy. Mirrors Guix %gcc-search-paths.
+        # glibc's copy.
         env.prepend_path("C_INCLUDE_PATH", self.prefix.include)
         env.append_path("CPLUS_INCLUDE_PATH", self.prefix.include)
         env.prepend_path("LIBRARY_PATH", join_path(self.prefix, "lib"))

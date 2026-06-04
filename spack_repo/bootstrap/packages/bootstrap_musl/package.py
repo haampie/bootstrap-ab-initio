@@ -16,9 +16,8 @@ class BootstrapMusl(Package):
     tcc-built scaffold needed was a tcc/HAVE_FLOAT artifact; compiled by a real
     GCC the pristine tarball builds clean and its printf("%f") is correct.
 
-    Ported from MES-replacement/steps/06-musl-1.1.24-gcc/. Carried as
-    ``type=(build,run)`` -- this is the sysroot libc bootstrap-gcc-stage1 links.
-    No ``c`` virtual dependency."""
+    Carried as ``type=(build,run)`` -- this is the sysroot libc
+    bootstrap-gcc-stage1 links. No ``c`` virtual dependency."""
 
     homepage = "https://musl.libc.org/"
     url = "https://www.musl-libc.org/releases/musl-1.1.24.tar.gz"

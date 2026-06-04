@@ -15,9 +15,9 @@ class BootstrapLinuxHeaders(Package):
 
     musl needs the kernel uapi headers (asm/, asm-generic/, linux/, ...). The
     new chain has no kernel-header seed for the x86_64 cap, so we sanitize them
-    from a pristine kernel tarball with ``make headers`` (Guix's
-    linux-libre-headers-boot0 approach) -- a copy+sed+unifdef pass, no kernel
-    compile. Output lands in ``usr/include`` and we copy the ``*.h`` into prefix.
+    from a pristine kernel tarball with ``make headers`` -- a copy+sed+unifdef
+    pass, no kernel compile. Output lands in ``usr/include`` and we copy the
+    ``*.h`` into prefix.
 
     HOSTCC is **bootstrap-gcc-stage0** (a real GCC). ``make headers`` compiles a
     couple of host tools (``scripts/basic/fixdep``, ``scripts/unifdef``); an
@@ -73,7 +73,7 @@ class BootstrapLinuxHeaders(Package):
         karch = "arm64" if spec.target.family == "aarch64" else "x86_64"
         make("headers", "ARCH=" + karch, "HOSTCC=" + gcc)
 
-        # Install usr/include/**.h into <prefix>/include (Guix install phase).
+        # Install usr/include/**.h into <prefix>/include.
         for dirpath, _dirs, files in os.walk("usr/include"):
             for fname in files:
                 if not fname.endswith(".h"):

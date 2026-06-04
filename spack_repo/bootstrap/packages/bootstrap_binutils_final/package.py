@@ -10,11 +10,9 @@ from spack.package import *
 class BootstrapBinutilsFinal(Package):
     """Native x86_64 binutils 2.46 -- the first glibc-linked binutils.
 
-    Built by gcc-boot0-wrapped against glibc-boot0. gprofng is built (as in
-    Guix binutils-final) by linking the static libstdcxx-boot1 via LDFLAGS.
-    make is bootstrap-gmake. ``diff``/``cmp`` come from the host (sandbox).
-    No ``c`` virtual. Mirrors Guix ``binutils-final`` / the old
-    ``binutils-final``, retargeted native."""
+    Built by gcc-boot0-wrapped against glibc-boot0. gprofng is built by linking
+    the static libstdcxx-boot1 via LDFLAGS. make is bootstrap-gmake.
+    ``diff``/``cmp`` come from the host (sandbox). No ``c`` virtual."""
 
     homepage = "https://www.gnu.org/software/binutils/"
     url = "https://ftpmirror.gnu.org/binutils/binutils-2.46.tar.bz2"

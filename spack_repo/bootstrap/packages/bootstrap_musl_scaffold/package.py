@@ -17,10 +17,9 @@ class BootstrapMuslScaffold(Package):
     its floating-point formatting is wrong (the seed tcc's out-of-line va_arg
     only classifies GP, so printf %f won't round-trip). It is discarded once
     bootstrap-gcc-stage0 rebuilds a *pristine* musl (the bootstrap-musl package).
-    Ported from MES-replacement/steps/musl-1.1.24/ (build.sh + patches/).
 
-    Built with bare tcc-mes as ``CC`` (exactly like the reference build.sh's
-    ``CC="${TCC}"`` -- no cc-wrapper). tcc-mes bakes its own crt/libc/libtcc1
+    Built with bare tcc-mes as ``CC`` (``CC="${TCC}"`` -- no cc-wrapper).
+    tcc-mes bakes its own crt/libc/libtcc1
     search paths in (CONFIG_TCC_CRTPREFIX/LIBPATHS), and musl compiles with
     ``-nostdinc`` shipping its own freestanding headers, so the seed needs no
     ``-I``/``-B`` help; configure is cross-aware (``--target``) so its link
@@ -28,8 +27,8 @@ class BootstrapMuslScaffold(Package):
     bootstrap-gmake-mes; kernel uapi headers from the prebuilt
     bootstrap-linux-headers-seed. No ``c`` virtual dependency.
 
-    Patches applied from steps/musl-1.1.24/patches/.  Shared patches have no
-    arch condition; arch-specific patches use ``when="target=<arch>:"``.
+    Shared patches have no arch condition; arch-specific patches use
+    ``when="target=<arch>:"``.
 
     Shared (both architectures):
       0001 EMPTY_LIB_NAMES += g   (tcc emits -lg at link; musl ships no libg.a)
@@ -53,9 +52,8 @@ class BootstrapMuslScaffold(Package):
                                    limitation, fixed downstream.)
 
     aarch64-only (tcc has no AArch64 assembler/inline-asm operands).  These are
-    three concern-grouped unified diffs squashed from the proven 21-patch series
-    in MES-replacement/steps/musl-1.1.24/patches/ (see each patch header for the
-    upstream numbers it subsumes):
+    three concern-grouped unified diffs (see each patch header for the upstream
+    numbers it subsumes):
       aarch64-01-va_list          (alltypes.h.in + <stdarg.h>: AAPCS64 va_list
                                    via tcc's 2-arg __va_start/__va_arg builtins)
       aarch64-02-asm-to-c         (every AArch64 .s / inline-asm source rewritten

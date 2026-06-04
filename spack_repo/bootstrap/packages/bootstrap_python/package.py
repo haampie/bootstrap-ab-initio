@@ -31,9 +31,7 @@ class BootstrapPython(Package):
     ``_PYTHON_HOST_PLATFORM=linux-x86_64`` makes setup.py skip /usr/include and
     /usr/local probing (the sandbox blocks those reads). Native x86_64 build,
     so build==host (cross_compiling=no) and python can run its own freeze
-    steps. make is bootstrap-gmake. No ``c`` virtual.
-
-    Ported from ``python-boot0`` (Guix ``gnu/packages/commencement.scm``)."""
+    steps. make is bootstrap-gmake. No ``c`` virtual."""
 
     homepage = "https://www.python.org/"
     url = "https://www.python.org/ftp/python/3.5.9/Python-3.5.9.tar.xz"
@@ -125,7 +123,7 @@ class BootstrapPython(Package):
         make()
         make("install")
 
-        # Remove the large test suite (Guix: remove-tests phase).
+        # Remove the large test suite.
         test_dir = join_path(prefix.lib, "python3.5", "test")
         if os.path.isdir(test_dir):
             shutil.rmtree(test_dir)

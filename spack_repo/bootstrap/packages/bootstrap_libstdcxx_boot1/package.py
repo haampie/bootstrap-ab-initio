@@ -20,8 +20,7 @@ class BootstrapLibstdcxxBoot1(Package):
     allow_read): libtool merges the libsupc++/c++NN convenience archives into
     libstdc++.a by extracting them and enumerating objects with ``find`` --
     without a real find, libstdc++.a ships only the 8 compatibility*.o and every
-    downstream C++ link breaks. No ``c`` virtual. Mirrors Guix ``libstdc++``
-    (make-libstdc++ gcc-boot0, boot2 stage) / the old ``libstdcxx-boot1``."""
+    downstream C++ link breaks. No ``c`` virtual."""
 
     homepage = "https://gcc.gnu.org/"
     url = "https://ftpmirror.gnu.org/gcc/gcc-16.1.0/gcc-16.1.0.tar.xz"

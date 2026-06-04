@@ -43,8 +43,6 @@ class BootstrapTccMusl(Package):
     NUL-corrupted ``%016lx`` (which broke ``nm | grep``) and broken ``%f`` from
     the whole toolchain. See the bootstrap-scaffold-musl-printf-broken memory.
 
-    Ported from MES-replacement/steps/03-tcc-musl/ (+ musl-1.1.24/log.md).
-
     THE critical flag is ``-DHAVE_FLOAT=1``: the bootstrappable 0.9.26 fork wraps
     all floating-point handling in ``#if HAVE_FLOAT``; without it every
     float/double literal compiles to 0.0 and silently miscompiles GCC's cc1
@@ -120,8 +118,7 @@ class BootstrapTccMusl(Package):
         # lib/libtcc1.c: its only non-portable code is an i386 inline-asm block
         # guarded ``#if !X86_64 && !ARM`` which falls through to ``#error
         # unsupported CPU type`` on aarch64, and its 64-bit integer helpers are
-        # unneeded (aarch64 divides natively); cf. steps/musl-1.1.24/log.md
-        # step 4.
+        # unneeded (aarch64 divides natively).
         libtcc1 = join_path(tccdir, "libtcc1.a")
         with working_dir(src):
             if mes_arch == "x86_64":

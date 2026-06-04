@@ -35,7 +35,7 @@ class BootstrapGccBoot0(Package):
     gmp/mpfr/mpc are built IN-TREE (compiled by gcc-9, which warns rather than
     errors on implicit-function-declaration, so no relax wrapper is needed --
     unlike gcc-final, whose host compiler is GCC 16). make is bootstrap-gmake.
-    No ``c`` virtual. Ported from ``gcc-boot0`` (Guix ``gcc-cross-boot0``)."""
+    No ``c`` virtual."""
 
     homepage = "https://gcc.gnu.org/"
     url = "https://ftpmirror.gnu.org/gcc/gcc-16.1.0/gcc-16.1.0.tar.xz"
@@ -89,7 +89,7 @@ class BootstrapGccBoot0(Package):
             # would search the host /usr/include -- landlock-blocked -> fatal on
             # GCC's <stdc-predef.h> preinclude, and fixincludes would scan it.
             # Replicate the cross behavior with three stock knobs (no host header
-            # is ever read; matches a pure Guix/Nix env where /usr/include is
+            # is ever read; matches a clean distro env where /usr/include is
             # simply absent): force inhibit_libc=true (env), disable fixincludes,
             # and point the system-header dir at the conventional non-existent
             # ``/nonexistent`` sentinel (never created; clearly not a real path,
@@ -150,7 +150,7 @@ class BootstrapGccBoot0(Package):
             make("-j{0}".format(make_jobs))
             make("install")
 
-        # glibc links against libgcc_eh; provide it (Guix symlink-libgcc_eh).
+        # glibc links against libgcc_eh; provide it.
         triplet = "%s-linux-gnu" % spec.target.family
         gcc_lib = join_path(prefix.lib, "gcc", triplet, str(spec.version))
         libgcc = join_path(gcc_lib, "libgcc.a")

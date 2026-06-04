@@ -32,7 +32,7 @@ class BootstrapGccFinal(Package):
     build needs CPLUS_INCLUDE_PATH reset to just glibc (the external
     libstdcxx-boot1 shares include guards with the in-tree copy). make is
     bootstrap-gmake; ``find``/``diff``/``cmp`` from the host (sandbox). No ``c``
-    virtual. Mirrors Guix ``gcc-final`` / the old ``gcc-final``."""
+    virtual."""
 
     homepage = "https://gcc.gnu.org/"
     url = "https://ftpmirror.gnu.org/gcc/gcc-16.1.0/gcc-16.1.0.tar.xz"
@@ -117,8 +117,8 @@ class BootstrapGccFinal(Package):
         os.environ["ac_cv_prog_lex_root"] = "lex.yy"
 
         # Strip the external libstdcxx-boot1 from CPLUS_INCLUDE_PATH for EVERY
-        # libstdc++-v3 C++ compile (GCC 11+ regression bugzilla/100017; Guix's
-        # fix-build-with-external-libstdc++). The external libstdc++ headers
+        # libstdc++-v3 C++ compile (GCC 11+ regression bugzilla/100017). The
+        # external libstdc++ headers
         # share include guards with the in-tree libstdc++ being built, so an
         # in-tree <fenv.h>'s #include_next would hit the boot1 wrapper and never
         # reach glibc's real <fenv.h>. Reset CPLUS_INCLUDE_PATH to just glibc;
@@ -139,8 +139,8 @@ class BootstrapGccFinal(Package):
         )
 
         # Relax GCC 16's implicit-function-declaration error for the build/host
-        # compiler (Guix's relax-gcc-strictness phase): the in-tree gmp's
-        # configure tests compile with no CFLAGS and would otherwise fail.
+        # compiler: the in-tree gmp's configure tests compile with no CFLAGS and
+        # would otherwise fail.
         real_cc = join_path(spec["bootstrap-gcc-boot0-wrapped"].prefix.bin, "gcc")
         cc_wrap = os.path.abspath("cc-relaxed.sh")
         with open(cc_wrap, "w") as f:

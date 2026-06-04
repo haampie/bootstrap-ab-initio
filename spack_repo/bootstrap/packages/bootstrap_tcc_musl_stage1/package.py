@@ -45,8 +45,6 @@ class BootstrapTccMuslStage1(Package):
     in three stages and the fixed point (stage2 == stage3 byte-identical) is
     asserted. See the bootstrap-scaffold-musl-printf-broken memory.
 
-    Ported from MES-replacement/steps/03-tcc-musl/ (+ musl-1.1.24/log.md).
-
     THE critical flag is ``-DHAVE_FLOAT=1``: the bootstrappable 0.9.26 fork wraps
     all floating-point handling in ``#if HAVE_FLOAT``; without it every
     float/double literal compiles to 0.0 and silently miscompiles GCC's cc1
@@ -131,7 +129,7 @@ class BootstrapTccMuslStage1(Package):
         # block guarded ``#if !X86_64 && !ARM`` -> on aarch64 it falls through to
         # ``#error unsupported CPU type``, and its 64-bit integer helpers
         # (__divdi3/__udivmoddi4/...) are unneeded since aarch64 divides
-        # natively (cf. steps/musl-1.1.24/log.md step 4).
+        # natively.
         libtcc1 = join_path(tccdir, "libtcc1.a")
         with working_dir(src):
             if mes_arch == "x86_64":

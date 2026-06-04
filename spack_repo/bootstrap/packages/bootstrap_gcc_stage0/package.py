@@ -16,10 +16,9 @@ class BootstrapGccStage0(Package):
     and gmp/mpfr/mpc as prerequisites. It exists to (a) recompile musl correctly
     (bootstrap-musl) and (b) host the C+C++ stage-1 build (bootstrap-gcc-stage1).
 
-    Ported from MES-replacement/steps/05-gcc-4.7-stage1/ (mirrors Guix
-    gcc-muslboot0). Single source patch: 0001 alloca (= Guix fix-alloca); every
-    other historical workaround was a HAVE_FLOAT artifact removed once tcc was
-    rebuilt with -DHAVE_FLOAT=1. No ``c`` virtual dependency.
+    Single source patch: 0001 alloca; every other historical workaround was a
+    HAVE_FLOAT artifact removed once tcc was rebuilt with -DHAVE_FLOAT=1. No
+    ``c`` virtual dependency.
 
     The Linaro 4.7-2013.11 snapshot is used (rather than FSF 4.7.4) so the same
     recipe + patches serve AArch64, where 4.7 is the lowest GCC with target

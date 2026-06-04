@@ -24,9 +24,8 @@ class BootstrapGmake(Package):
 
     Same build as bootstrap-gmake-mes (configure + bundled ``./build.sh`` -- no
     make-to-build-make), retargeted from tcc-mes/mes-libc to tcc-musl/scaffold
-    musl. musl is a complete libc, so none of the reference's mes-compat shims
-    (steps/08-gmake-4.4.1/mes-compat.*) are needed. No ``c`` virtual dependency:
-    the compiler is wired explicitly to tcc-musl."""
+    musl. musl is a complete libc, so none of the mes-compat shims are needed.
+    No ``c`` virtual dependency: the compiler is wired explicitly to tcc-musl."""
 
     homepage = "https://www.gnu.org/software/make/"
     url = "https://ftpmirror.gnu.org/make/make-4.4.1.tar.gz"

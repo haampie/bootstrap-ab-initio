@@ -17,12 +17,10 @@ class BootstrapM4(Package):
     that mints glibc is full-source.
 
     Native x86_64 build (the predecessor gcc-9.5 is already native; no i686
-    cross), so unlike the old i686 ``m4-boot0`` there is no ``-g0`` DWARF dance
-    and the triple is the musl triple gcc-9 emits. make is bootstrap-gmake
-    (jobserver-capable -> parallel; no MAKEFLAGS clearing). No ``c`` virtual:
-    the compiler is wired explicitly to bootstrap-gcc-9.
-
-    Ported from ``m4-boot0`` (Guix ``gnu/packages/commencement.scm`` m4-boot0)."""
+    cross), so there is no ``-g0`` DWARF dance and the triple is the musl triple
+    gcc-9 emits. make is bootstrap-gmake (jobserver-capable -> parallel; no
+    MAKEFLAGS clearing). No ``c`` virtual: the compiler is wired explicitly to
+    bootstrap-gcc-9."""
 
     homepage = "https://www.gnu.org/software/m4/"
     url = "https://ftpmirror.gnu.org/m4/m4-1.4.19.tar.bz2"

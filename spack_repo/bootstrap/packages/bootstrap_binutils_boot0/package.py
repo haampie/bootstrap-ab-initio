@@ -25,9 +25,7 @@ class BootstrapBinutilsBoot0(Package):
     Built **static** (``--disable-shared``): the predecessor toolchain only has
     static musl, so there is no shared libc to link a shared libbfd against.
     make is bootstrap-gmake (jobserver-capable; no MAKEFLAGS clearing). No ``c``
-    virtual: compiler wired explicitly to bootstrap-gcc-9.
-
-    Ported from ``binutils-boot0`` (Guix ``binutils-cross-boot0``), de-crossed."""
+    virtual: compiler wired explicitly to bootstrap-gcc-9."""
 
     homepage = "https://www.gnu.org/software/binutils/"
     url = "https://ftpmirror.gnu.org/binutils/binutils-2.46.tar.bz2"
